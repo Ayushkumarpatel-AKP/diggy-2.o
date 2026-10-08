@@ -150,3 +150,44 @@ orca terminal read --terminal <handle> --limit 45 --json
 - **Not done / follow-ups** — pixel-level screenshot diff vs the theme PNG (agent-browser not
   installed on this host; SSR + jsdom mount used as the automated substitute). Home hero and Assistant
   use the golden-D mark where the FBX renderer mounts (`// TEMP STUB — blocked on avatar`).
+
+### voice (branch `voice`) — ✅ code done, ⛔ blocked on core for manifest + background wiring
+
+- **New package `@diggy/voice`** (pure, DOM-free core so it unit-tests in Node; browser APIs are injected):
+  `protocol.ts` (wire protocol + `VOICE_COMMAND_ID`, `VOICE_CONTROL`), `status.ts`
+  (`THINKING_MESSAGES`, `VOICE_STATUS`, `emitAvatarStatus`/`emitAvatarState`/`announce`),
+  `shortcut.ts` (`PushToTalkShortcut` press/release gate + chord matchers + `commandIntent`),
+  `recorder.ts` (`RecorderController` over an injectable `RecorderHost`, base64 clip, `classifyMicError`),
+  `silence.ts` (`SilenceTracker` auto-stop), `lipsync.ts` (`LipSyncFeed` → `aa/ih/ou/ee/oh`, `attachLipSync`),
+  `stt.ts` (`createTranscriber` → `Provider.transcribe`, `decodeBase64`), `tts.ts`
+  (`createBrowserTts` no-network + `createProviderTts` via `Provider.speak`), `session.ts`
+  (`VoiceSession`: press/release/toggle/onSilence/speak → emits `BusEvents.VoiceTranscript`).
+- **`apps/extension/src/shortcut.ts`** — MV3 binding: `commands.onCommand` (toggle, since there is no
+  key-up) mapped through `PushToTalkShortcut`, plus `VOICE_CONTROL.press|release` from pages that see the
+  real keydown/keyup. Re-exports the matchers for the overlay/side panel.
+- **`apps/extension/entrypoints/offscreen/main.ts`** — DOM audio host: `RecorderController` +
+  `getUserMedia`/`MediaRecorder`, an `AnalyserNode` level meter (RMS + low/mid/high bands) driving
+  `SilenceTracker` in toggle mode and broadcast as `diggy:offscreen-level` for lip-sync, plus TTS
+  playback (`diggy:offscreen-play`). Message names ported from the proven seed recorder.
+- **Deliverables**: (1) CTRL+SPACE PTT ✅ module; (2) offscreen MediaRecorder → provider STT ✅ module
+  (invocation is the background's, see blocker); (3) STT/TTS + lip-sync ✅; (4) thinking/status routing ✅;
+  (5) TTS playback + `AvatarAPI.say` wiring ✅ (`VoiceSession.speak`).
+- **Gates** — `pnpm -w typecheck` ✅ (9) · `pnpm -w test` ✅ (**171** = 9 shared + 49 core + 41 avatar +
+  16 ui + **56 voice**) · `pnpm -w build` ✅ · `pnpm --filter @diggy/extension build` ✅ (offscreen chunk
+  **16.53 kB**). Tests cover shortcut press/release + command mapping, recorder start/stop + mic errors,
+  a transcript event reaching `BusEvents.VoiceTranscript`, silence auto-stop, lip-sync smoothing/bounds,
+  status copy + bus routing, STT/TTS wrappers.
+- **⛔ Blocked on core/leader (outside voice's file ownership):**
+  1. `apps/extension/wxt.config.ts` must declare `commands["toggle-voice"].suggested_key.default = "Ctrl+Space"`
+     — without it `commands.onCommand` never fires and the global chord is dead.
+  2. `apps/extension/entrypoints/background.ts` must instantiate `VoiceSession` (recorder channel →
+     offscreen, `createTranscriber(provider)` → Groq whisper-large-v3), call `bindPushToTalk(session, { commands, runtime })`,
+     forward `OFFSCREEN.silence` → `session.onSilence`, and forward `OFFSCREEN.level` → `attachLipSync`.
+     The provider key stays server-side (never in the bundle).
+  3. `apps/extension/package.json` (core-owned): add `"@diggy/voice": "workspace:*"` so the relative
+     imports (`../../../packages/voice/src/index.js`) can become `@diggy/voice`.
+- **Manual round-trip** — NOT run: needs the manifest command + background wiring above. Everything up to
+  the boundary is built and unit-tested.
+- **Follow-up** — the visible "listening" indicator is a UI concern; `VoiceSession` emits the
+  `Listening…` status/state via the bus for the overlay/`StatusBubble` to render.
+
