@@ -14,7 +14,7 @@ Project: `C:\Users\Ayush\orca\projects\DIGGY 2.O` (base `main`, Phase 0 @ `19aff
 | ui | `orca/workspaces/DIGGY 2.O/ui` / `ui` | `term_518302c6-4319-46bc-b4d5-57f01866d000` | `agents/ui.md` | **done** — merged to `main` |
 | monitor | `DIGGY 2.O/monitor` / `monitor` | — | `agents/monitor.md` | queued (wave 3) |
 | actions | `DIGGY 2.O/actions` / `actions` | — | `agents/actions.md` | queued (wave 3) |
-| forms-vault | `DIGGY 2.O/forms-vault` / `forms-vault` | — | `agents/forms-vault.md` | queued (wave 3) |
+| forms-vault | `DIGGY 2.O/forms-vault` / `forms-vault` | — | `agents/forms-vault.md` | **done** — on branch `forms-vault` |
 | voice | `DIGGY 2.O/voice` / `voice` | — | `agents/voice.md` | queued (wave 3) |
 | integrations | `DIGGY 2.O/integrations` / `integrations` | — | `agents/integrations.md` | queued (wave 4) |
 | activity | `DIGGY 2.O/activity` / `activity` | — | `agents/activity.md` | queued (wave 4) |
@@ -150,3 +150,39 @@ orca terminal read --terminal <handle> --limit 45 --json
 - **Not done / follow-ups** — pixel-level screenshot diff vs the theme PNG (agent-browser not
   installed on this host; SSR + jsdom mount used as the automated substitute). Home hero and Assistant
   use the golden-D mark where the FBX renderer mounts (`// TEMP STUB — blocked on avatar`).
+
+### forms-vault (branch `forms-vault`) — ✅ done, awaiting merge
+
+- **Scope touched**: `packages/vault/**`, `packages/forms/**`, `apps/extension/src/field-mapper.ts`,
+  `agents/STATUS.md`, `pnpm-lock.yaml`. Nothing else.
+- **`packages/vault`** (new package `@diggy/vault`) — Argon2id (hash-wasm) + AES-256-GCM (WebCrypto)
+  ports of the seed `crypto.ts` / `store.ts` (Dexie IndexedDB + `MemoryAdapter`), an adapted
+  `profile.schema.ts` (keyed `VaultField`s + résumé sections, `{{LOCKED:<key>}}` token helpers) and a
+  ported `lock.ts`. The new `vault.ts` **implements the `VaultAPI` contract**: `getProfile()` (shared =
+  plaintext, locked = token), `tokenFor()`, `resolveLocal()` (unlocked + **per-use approval gate**,
+  default deny, never logged) and `setVisibility()`. Audit sink receives keys only — never a value.
+- **`packages/forms`** (new package `@diggy/forms`) — Self-contained fill pipeline (depends only on
+  `@diggy/shared` types): `detect.ts` (structural, realm-safe), `classify.ts` (per-signal scoring),
+  `match.ts` (profile → instructions; ambiguity → **question**, never a guess), `preview.ts`,
+  `fill.ts` (native setters + `input`/`change`; `DataTransfer` uploads; **never submits**),
+  `saved-answers.ts`, `resume.ts`, `mask.ts` (masks locked/sensitive regions before capture).
+- **`apps/extension/src/field-mapper.ts`** — ported the seed heuristic rule table, wired to the
+  tokenized vault profile; full `planPage()`/`fillPlanned()` pipeline. Reaches `@diggy/forms` by
+  **relative import** (extension `package.json` is core-owned) — same pattern as the UI worker.
+- **Gates** — `pnpm -w typecheck` ✅ (10) · `pnpm -w test` ✅ (**195**: shared 9 + core 49 + avatar 41 +
+  ui 16 + vault 36 + forms 44) · `pnpm -w build` ✅ (8) · `pnpm --filter @diggy/extension build` ✅
+  (sidepanel chunk 75.58 kB, total 467.65 kB).
+- **Token-leak proof** — `packages/vault/src/vault.test.ts`: locked fields surface only as
+  `{{LOCKED:<key>}}`; a serialized `getProfile()` contains no locked plaintext; `resolveLocal()` returns
+  `null` with no gate / denied / throwing gate, and plaintext only after approval; audit events contain
+  no plaintext; the stored blob is ciphertext only.
+- **No-submit proof** — `packages/forms/src/fill.dom.test.ts` runs a **real** fill over the fixture with
+  spies on `submit` (event + `HTMLFormElement.prototype.submit` + `requestSubmit`) and the submit
+  button: all zero, `outcome.submitted === false`. A source scan finds no `.submit(`/`requestSubmit`
+  call anywhere in `packages/forms/src` outside the test.
+- **Fixture ≥95%** — `packages/forms/src/fill.dom.test.ts`: 22 detected controls, 21 filled
+  (**95.45%**), each value equals the expected profile value; the deliberately ambiguous field
+  (`Reference number`) becomes a question, not a guess; the locked `aadhaar` is tokenized in the preview.
+- **Not done / follow-ups** — résumé `education/experience/projects` matching accepts an optional
+  `resume` section from the caller (the `VaultAPI.getProfile()` contract does not surface them);
+  `setFileValue` needs a `data:` URL (document `DocumentRef.dataUrl`) for real uploads. Nothing blocked.
