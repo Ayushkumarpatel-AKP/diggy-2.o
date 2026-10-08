@@ -22,16 +22,6 @@ import type {
 } from "@diggy/shared";
 import { ProviderError } from "../errors.js";
 
-/**
- * TEMP STUB — blocked on leader (`packages/shared`): `ChatMessage` has no
- * `toolCalls` field, but an OpenAI-compatible tool loop must send the assistant
- * turn's `tool_calls` back on the next request. Until the contract grows the
- * field, the core layer carries it on this structurally-compatible extension.
- */
-export interface CoreChatMessage extends ChatMessage {
-  toolCalls?: ToolCall[];
-}
-
 export interface OpenAICompatibleConfig {
   /** Stable id, e.g. `groq` or `nvidia-nim`. */
   id: string;
@@ -88,7 +78,7 @@ export function toWireMessages(messages: ChatMessage[]): WireMessage[] {
       if (message.name) wire.name = message.name;
     }
     if (message.role === "assistant") {
-      const calls = (message as CoreChatMessage).toolCalls;
+      const calls = message.toolCalls;
       if (calls && calls.length > 0) {
         wire.tool_calls = calls.map((call) => ({
           id: call.id,

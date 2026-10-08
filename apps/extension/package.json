@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@diggy/shared": "workspace:*",
+    "@diggy/ui": "workspace:*",
+    "@diggy/voice": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import type { ChatMessage } from "@diggy/shared";
+
 import { ProviderError } from "../errors.js";
-import { toWireMessages, type CoreChatMessage } from "./http.js";
+import { toWireMessages } from "./http.js";
 import { createGroqProvider } from "./groq.js";
 
 interface Captured {
@@ -137,7 +139,7 @@ describe("OpenAI-compatible provider", () => {
 
 describe("toWireMessages", () => {
   it("emits assistant tool_calls so a tool loop can continue", () => {
-    const message: CoreChatMessage = {
+    const message: ChatMessage = {
       role: "assistant",
       content: "",
       toolCalls: [{ id: "c1", name: "readPage", arguments: { url: "x" } }],

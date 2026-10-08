@@ -54,6 +54,12 @@ importers:
       '@diggy/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@diggy/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      '@diggy/voice':
+        specifier: workspace:*
+        version: link:../../packages/voice
       react:
         specifier: ^18.3.1
         version: 18.3.1

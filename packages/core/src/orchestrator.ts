@@ -13,7 +13,6 @@ import type { ChatMessage, ChatRequest, ChatResult, ToolCall, ToolSchema } from 
 import { BRAIN, CONTEXT, type AgentMode } from "./config.js";
 import { capToolResult, compactWithOverflowRecovery, limitToolResults, totalTokens } from "./memory/compaction.js";
 import { buildSystemPrompt, normalizeMode, temperatureFor, type PromptLayer } from "./prompt.js";
-import type { CoreChatMessage } from "./providers/http.js";
 
 /** Anything that can answer a chat request — a `Provider` or the registry. */
 export interface BrainModel {
@@ -227,7 +226,7 @@ export async function runBrain(options: RunBrainOptions): Promise<RunBrainResult
         maxTokens: options.maxTokens,
       });
       plan = parsePlan(options.goal, plannerResult.text);
-      const planned: CoreChatMessage = {
+      const planned: ChatMessage = {
         role: "assistant",
         content: JSON.stringify({ plan: plan.steps }),
       };
@@ -276,7 +275,7 @@ export async function runBrain(options: RunBrainOptions): Promise<RunBrainResult
     }
 
     if (result.toolCalls.length > 0) {
-      const assistant: CoreChatMessage = {
+      const assistant: ChatMessage = {
         role: "assistant",
         content: result.text,
         toolCalls: result.toolCalls,

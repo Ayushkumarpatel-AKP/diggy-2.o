@@ -27,6 +27,15 @@ export default defineConfig({
       page: "settings.html",
       open_in_tab: true,
     },
+    // Push-to-talk. MV3 fires `commands.onCommand` on key-down only (no key-up),
+    // so this chord toggles the mic; a page that sees the real keydown/keyup pair
+    // can still do true hold-to-talk via VOICE_CONTROL.
+    commands: {
+      "toggle-voice": {
+        suggested_key: { default: "Ctrl+Space" },
+        description: "Push-to-talk voice",
+      },
+    },
   },
   hooks: {
     "build:manifestGenerated": (wxt, manifest) => {
