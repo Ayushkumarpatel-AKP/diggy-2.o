@@ -62,7 +62,9 @@ a `// TEMP STUB — blocked on <owner>` comment and report it as blocked.
 ## Verify before you report done
 
 ```bash
-pnpm install
+# This machine exports NODE_ENV=production, which makes pnpm SKIP devDependencies.
+# Always install with it forced to development:
+$env:NODE_ENV="development"; pnpm install
 pnpm -w typecheck
 pnpm -w test
 pnpm -w build
