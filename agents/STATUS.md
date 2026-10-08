@@ -10,7 +10,7 @@ Project: `C:\Users\Ayush\orca\projects\DIGGY 2.O` (base `main`, Phase 0 @ `19aff
 |---|---|---|---|---|
 | core | `orca/workspaces/DIGGY 2.O/core` / `core` | `term_dcb55797-9e71-4bfa-b46f-620fb178d026` | `agents/core.md` | **done** — merged to `main` |
 | avatar | `DIGGY 2.O/avatar` / `avatar` | — | `agents/avatar.md` | queued (wave 2) |
-| brain | `DIGGY 2.O/brain` / `brain` | — | `agents/brain.md` | queued (wave 2) |
+| brain | `DIGGY 2.O/brain` / `brain` | — | `agents/brain.md` | **done** — on branch `brain` (see below) |
 | ui | `DIGGY 2.O/ui` / `ui` | — | `agents/ui.md` | queued (wave 2) |
 | monitor | `DIGGY 2.O/monitor` / `monitor` | — | `agents/monitor.md` | queued (wave 3) |
 | actions | `DIGGY 2.O/actions` / `actions` | — | `agents/actions.md` | queued (wave 3) |
@@ -61,4 +61,35 @@ orca terminal read --terminal <handle> --limit 45 --json
   `pnpm --filter @diggy/extension build` ✅ → `.output/chrome-mv3`.
 - **Note for downstream workers**: `pnpm-lock.yaml` changed (`@wxt-dev/module-react` pinned to
   `~1.1.5` — 1.2.x pulls `@vitejs/plugin-react@6`, incompatible with WXT 0.19's Vite 5). Re-run
+  `$env:NODE_ENV="development"; pnpm install` after merging.
+
+### brain (branch `brain`) — ✅ done
+
+- **New package** `packages/core` (`@diggy/core`) implementing the `Provider` / `ProviderRegistry`
+  contracts from `packages/shared/src/contracts/provider.ts` (its own `Provider`, not the AI SDK).
+- **Deliverables (all done):**
+  1. `providers/{http,groq,nvidia-nim,index}.ts` — shared OpenAI-compatible client (chat, tool-calls,
+     SSE stream, Whisper transcribe, health); Groq `openai/gpt-oss-120b` + STT `whisper-large-v3`,
+     NVIDIA NIM `openai/gpt-oss-20b`.
+  2. `registry.ts` — `FailoverRegistry implements ProviderRegistry`: ordered chain, auto-switch on
+     failure, exponential-backoff retry, health gating, latency + cost accounting.
+  3. `orchestrator.ts` — plan → act → observe → repeat; step budget default **130**, hard cap **195**;
+     `Continue` signal + resumable checkpoint.
+  4. `prompt.ts` — DIGGY persona + `extend`/`override` layering; temps **0.15 / 0.3 / 0** for
+     browser-control / ask / vision.
+  5. `memory/` — per-tab history, user memory (stated preferences), token-aware compaction with
+     tool-result limits + overflow recovery.
+  6. `skills.ts` — on-demand agentskills.io-style loader.
+  7. `providers/registry-catalog.ts` — model-agnostic catalog (openai/openrouter available now;
+     anthropic/gemini are one-file-each `planned` slots).
+- **Gates:** `pnpm -w typecheck` ✅ (4 tasks) · `pnpm -w test` ✅ (**58 tests**: shared 9 + core 49) ·
+  `pnpm -w build` ✅ (core `dist` + `apps/extension/.output/chrome-mv3`).
+- **Failover proof:** `src/registry.test.ts` — Groq down (3 attempts = 1 + 2 retries, backoff
+  250→500 ms) → NVIDIA answers; `chatWithProvider().provider.id === "nvidia-nim"`, and `chat()`
+  returns a plain `ChatResult`, so the switch is invisible to callers.
+- **Contract gap (blocked on leader):** `ChatMessage` has no `toolCalls`, so an OpenAI-compatible
+  tool loop cannot send the assistant turn's `tool_calls` back. Stubbed as `CoreChatMessage`
+  (`// TEMP STUB — blocked on leader`) in `providers/http.ts` + used by `orchestrator.ts`.
+  Fix: add `toolCalls?: ToolCall[]` to `ChatMessage` in `packages/shared/src/contracts/provider.ts`.
+- **Note:** `pnpm-lock.yaml` changed (new `@diggy/core` importer). Re-run
   `$env:NODE_ENV="development"; pnpm install` after merging.
