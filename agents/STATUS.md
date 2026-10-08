@@ -150,3 +150,43 @@ orca terminal read --terminal <handle> --limit 45 --json
 - **Not done / follow-ups** — pixel-level screenshot diff vs the theme PNG (agent-browser not
   installed on this host; SSR + jsdom mount used as the automated substitute). Home hero and Assistant
   use the golden-D mark where the FBX renderer mounts (`// TEMP STUB — blocked on avatar`).
+
+### monitor (branch `monitor`) — ✅ done
+
+- **Scope touched**: `packages/monitor/**`, `services/crawler/**`, `agents/STATUS.md`, `pnpm-lock.yaml`. Nothing else.
+- **New package `@diggy/monitor`** (the Monitor Engine USP):
+  1. `src/watches.ts` — `WatchStore` (max 50, pluggable persistence) + all 8 `MonitorKind`
+     detections (content_change, keyword, new_post, registration_open, deadline_change,
+     release_published, price_change, custom); cyrb53 hash + keyword diff (ported from
+     `projects/diggy`), stable `eventKey` dedupe, non-`keep` disarms / `keep` re-arms /
+     `rearm()`.
+  2. `src/engine.ts` — `createMonitorEngine`: source → **baseline on first check** → diff →
+     **AI analysis via `@diggy/core`** → `MonitorEvent` → notify → avatar alert; `checkAll`,
+     `due(now)`, `rearm`, `onChange`.
+  3. `src/analyzer.ts` — heuristic + `createCoreAnalyzer` (offline-gated, heuristic fallback).
+  4. `src/source.ts` (crawler/fetch sources + `buildSnapshot`), `src/notify.ts`
+     (chrome/composite/memory), `src/avatar-alert.ts` (`AvatarAPI` adapter), `src/site-adapters.ts`
+     (versioned guidance), `src/scheduler.ts` (interval + `chrome.alarms` adapters).
+- **Crawler service `@diggy/crawler`** ported (not blindly) from `projects/diggy`: Fastify
+  `/extract /crawl /search /markdown /transcript /feed /reach` + `/health /providers /monitor`;
+  **Crawlee + Playwright backbone** (`src/crawlee.ts`, in-memory storage, robots respected) with
+  the direct-Playwright BFS fallback; Readability + JSDOM; SSRF guard; local `service-auth.ts`.
+- **Acceptance fixture** `packages/monitor/src/engine.test.ts`: check #1 baseline → 0 events;
+  changed content → exactly 1; identical → 0 (dedupe); `keep` re-arm → 1 again. ✅
+- **Gates**: `pnpm -w typecheck` ✅ (12) · `pnpm -w test` ✅ (10; monitor **38**, crawler **100**)
+  · `pnpm -w build` ✅ (8).
+- **Smoke**: service starts (127.0.0.1:17329); `GET /health` ok; `POST /extract` inline HTML →
+  `## Exam Notice … **open** …`; no-token → 401.
+- **Extraction adapters**: wired/active → `builtin` (Crawlee+Playwright+Readability) + `reach`
+  (yt-dlp / RSS / Jina). Opt-in only (never default-routed) → `firecrawl` (**hosted API only**),
+  `crawl4ai`, `browser-use`, `python-sidecar`. **Stubbed/documented only**: Python tier
+  (`docker/python-extractor/`, trafilatura/Newspaper4k) — not a Node build dep.
+- **Blockers / notes**:
+  - `@diggy/shared/service-auth` does not exist in shared → ported locally to
+    `services/crawler/src/service-auth.ts` (`// TEMP STUB — blocked on core` to promote; `@diggy/api`
+    will need it too).
+  - `pnpm-lock.yaml` changed (crawlee 3.18 + playwright 1.64; `@diggy/monitor` + `@diggy/crawler`
+    importers). Re-run `$env:NODE_ENV="development"; pnpm install` after merging.
+  - `pnpm -w test` must run with `NODE_ENV=development`: the machine's `NODE_ENV=production` makes
+    React resolve to its production build and breaks `@diggy/ui`'s `Dashboard.dom.test.tsx`
+    (`act(...) is not supported`) — pre-existing, not monitor-owned.
