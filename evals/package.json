@@ -1,0 +1,14 @@
+{
+  "name": "@diggy/evals",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DIGGY agent-eval harness — scores the brain's decisions against golden reference transcripts, offline.",
+  "scripts": {
+    "test": "node run.mjs --mode=recorded && node run.mjs --selftest",
+    "eval": "node run.mjs",
+    "eval:live": "node run.mjs --mode=live",
+    "list": "node run.mjs --list",
+    "selftest": "node run.mjs --selftest"
+  }
+}
