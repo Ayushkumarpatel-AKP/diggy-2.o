@@ -1656,22 +1656,28 @@
     width: 84px;
     height: 84px;
   }
-  /* Persistent section switcher for narrow surfaces — all 7 tabs, one tap away. */
+  /* Persistent section switcher for narrow surfaces — all 7 tabs, one tap away.
+   * It is a fixed header: never shrinks, never scrolls vertically. (`flex: 0 0
+   * auto` matters — as a default flex child it was squeezed to ~39px, and because
+   * `overflow-x: auto` computes `overflow-y` to `auto` too, the pills clipped.) */
   .dg-tabbar {
     display: flex;
     gap: 6px;
+    flex: 0 0 auto;
     overflow-x: auto;
+    overflow-y: hidden;
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
     padding: 10px 14px;
-    position: sticky;
-    top: 0;
-    z-index: 20;
     background: var(--dg-surface);
     border-bottom: 1px solid var(--dg-line);
   }
   .dg-tabbar::-webkit-scrollbar {
     height: 6px;
+  }
+  /* Keep the floating status toast clear of the pinned composer. */
+  .dg-statusdock {
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px));
   }
   .dg-tiles,
   .dg-grid--4,
