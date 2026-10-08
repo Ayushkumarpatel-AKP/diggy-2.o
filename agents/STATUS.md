@@ -17,7 +17,7 @@ Coordinator: Command Code leader session (Orca). Wave mode: wave-by-wave (Comman
 | forms-vault | cmdc | `forms-vault` | **merged** |
 | voice | cmdc | `voice` | **merged (code) — needs core wiring** |
 | integrations | opencode | `integrations` | queued (wave 4) |
-| activity | opencode | `activity` | queued (wave 4) |
+| activity | opencode | `activity` | **done** — `@diggy/activity` log + redaction + bus bridge + sidepanel `ActivityPanel`; gates green (see Activity log below) |
 | qa | cmdc | `qa` | queued (wave 4) |
 
 Worktrees live at `C:\Users\Ayush\orca\workspaces\DIGGY 2.O\<name>`.
@@ -75,6 +75,31 @@ makes React resolve to its production build and breaks `@diggy/ui`'s `Dashboard.
 6. **Capability report** ships 8 clip FBX (+ `Chiori.fbx` = 9 FBX); the brief's "9 clips" was off by one.
 7. **Not browser-verified**: FBX render (no headless WebGL), no pixel diff vs the theme PNG, and the
    CTRL+SPACE round-trip (needs follow-up 1). jsdom + SSR mount used as the automated substitute.
+
+## Activity worker log (branch `activity`)
+
+- Implemented `ActivityAPI` (`packages/activity/src/store.ts`): append-only `ActivityEvent`
+  log, memory sink (sync source of truth) + IndexedDB sink via Dexie (`diggy-activity`
+  db, backfilled on `ready`), `record()` / `list({since, limit})` / `onRecord()`.
+- Redaction pass (`packages/activity/src/redact.ts`): known locked values scrubbed to
+  `{{LOCKED:key}}` in title/detail/meta before writing; key-based fallback replaces any
+  meta entry stored under a locked key even when plaintext is unknown; existing tokens
+  never touched. Proof: `store.test.ts` "redacts a locked value to a token" —
+  `1234-5678-9012` in title+meta stored as `{{LOCKED:aadhaar}}`, `JSON.stringify`
+  of the log contains no plaintext.
+- Bus bridge (`packages/activity/src/bridge.ts`): `wireActivityBus(bus, log)` routes
+  `monitor.event` → `monitored`, `voice.transcript` → `voice`, `action.plan.*` →
+  `action`, `activity.record` passthrough, plus `action.*` / `form.filled` /
+  `integration.event` / `voice.event` / `monitor.alert`.
+- Panel (`apps/extension/entrypoints/sidepanel/src/panels/ActivityPanel.tsx`): timeline
+  with kind icon + time from `@diggy/ui` (`Panel`, `ScreenHeader`, `Icon`,
+  `ACTIVITY_ICON/TONE`, `formatClock`), Today / All time / date filter, controlled
+  (`events`) + live (`log` via `list` + `onRecord`) modes.
+- Tests: 19 new in `@diggy/activity` (persist, `since`+`limit`, redaction, IDB
+  round-trip, bridge routing, panel Today/All/empty render).
+- Gates (all with `NODE_ENV=development`): `pnpm -w typecheck` 20/20 ✅ ·
+  `pnpm -w test` 18 tasks ✅ (activity 19/19) · `pnpm -w build` 14/14 ✅ ·
+  `pnpm --filter @diggy/extension build` ✅ (489.77 kB MV3 bundle).
 
 ## Spawn recipe (validated)
 
