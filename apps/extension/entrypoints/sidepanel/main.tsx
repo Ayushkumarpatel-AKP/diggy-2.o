@@ -1,20 +1,19 @@
+/**
+ * Side panel entrypoint — the real 7-tab DIGGY dashboard.
+ *
+ * NOTE: `apps/extension/package.json` is core-owned, so this entrypoint reaches the UI
+ * package by relative path instead of a workspace dependency. When core next touches the
+ * manifest, adding `"@diggy/ui": "workspace:*"` lets this become
+ * `import { Dashboard } from "@diggy/ui"` with no other change.
+ */
 import { createRoot } from "react-dom/client";
 
-import { NAV_TABS, tokens } from "@diggy/shared";
+import { Dashboard } from "../../../../packages/ui/src/index.js";
+import "../../../../packages/ui/src/styles.css";
 import "../../assets/app.css";
 
 function SidePanel() {
-  return (
-    <main style={{ background: tokens.color.bg, minHeight: "100vh", padding: 16 }}>
-      <h1 style={{ color: tokens.color.primaryInk, margin: 0 }}>DIGGY</h1>
-      <p style={{ color: tokens.color.muted }}>Side panel scaffold — the UI worker owns this surface.</p>
-      <ul>
-        {NAV_TABS.map((tab) => (
-          <li key={tab.id}>{tab.label}</li>
-        ))}
-      </ul>
-    </main>
-  );
+  return <Dashboard />;
 }
 
 const container = document.getElementById("root");

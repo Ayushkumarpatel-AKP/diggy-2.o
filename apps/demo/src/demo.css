@@ -1,0 +1,137 @@
+/* Demo chrome only — product styling lives in @diggy/ui/styles.css */
+
+html,
+body {
+  margin: 0;
+  background: #f2f3f6;
+}
+
+.demo-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--dg-line);
+}
+
+.demo-topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 700;
+  font-size: 14px;
+  margin-right: 6px;
+}
+
+.demo-tabs {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.demo-tab {
+  border: 1px solid var(--dg-line);
+  background: #fff;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--dg-ink-soft);
+  cursor: pointer;
+}
+.demo-tab:hover {
+  background: var(--dg-surface-alt);
+}
+.demo-tab--active {
+  background: var(--dg-primary-soft);
+  color: var(--dg-primary-ink);
+  border-color: transparent;
+}
+
+.demo-spacer {
+  flex: 1;
+}
+
+.demo-hint {
+  font-size: 11.5px;
+  color: var(--dg-muted);
+}
+
+.demo-view {
+  padding: 22px;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.demo-section {
+  margin-bottom: 26px;
+}
+
+.demo-section__title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--dg-muted);
+  margin: 0 0 12px;
+}
+
+.demo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.demo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+
+.demo-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 10px;
+}
+
+.demo-icon-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 4px;
+  border: 1px solid var(--dg-line);
+  border-radius: var(--dg-radius-md);
+  background: #fff;
+  font-size: 10px;
+  color: var(--dg-muted);
+}
+
+.demo-panel {
+  background: #fff;
+  border: 1px solid var(--dg-line);
+  border-radius: var(--dg-radius-xl);
+  box-shadow: var(--dg-shadow-sm);
+  padding: 18px;
+}
+
+.demo-overlay-stage {
+  position: relative;
+  min-height: 240px;
+  border-radius: var(--dg-radius-xl);
+  border: 1px solid var(--dg-line);
+  background: linear-gradient(180deg, #eef1f7, #f8f9fb);
+  padding: 20px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+}
