@@ -1,48 +1,58 @@
 import { BusEvents, createBus } from "@diggy/shared";
-import { createBrainRegistry, createGroqProvider } from "@diggy/core";
-import {
-  createTranscriber,
-  OFFSCREEN,
-  VoiceSession,
-  VOICE_STATUS,
-  type VoiceRecorder,
-} from "@diggy/voice";
+import { createOpenAICompatibleProvider } from "@diggy/core";
+import { VOICE_STATUS } from "@diggy/voice";
 
+import {
+  normalizeSettings,
+  presetById,
+  SETTINGS_KEY,
+  settingsReady,
+  type ProviderSettings,
+} from "../src/provider-settings.js";
 import { bindPushToTalk, type CommandsApi, type RuntimeMessageApi } from "../src/shortcut.js";
 
 /**
  * Extension background service worker.
  *
- * Owns the shared plumbing (bus, side panel, storage) and the push-to-talk voice
- * pipeline: the mic lives in the offscreen document, STT + chat go through
- * `@diggy/core` (Groq primary → NVIDIA NIM failover) using the user's own key
- * from storage, and replies are spoken by the offscreen browser voice and shown
- * by the on-page avatar.
+ * Owns the shared plumbing and the voice loop:
+ *
+ *   Ctrl+Space  → start dictation; the page shows what you are saying live
+ *   Ctrl+Space  → stop; the transcript goes to the model, and the answer is
+ *                 spoken (natural voice) + shown on the avatar.
+ *
+ * The model is whatever the user configured in Settings — any OpenAI-compatible
+ * source. Page reading and speech happen in the content script, so no host
+ * permission is needed beyond the provider origin the user grants on save.
  */
 const bus = createBus({ source: "background" });
 
-/** Where the user's own provider keys live (set in DIGGY settings). */
-export const PROVIDER_KEYS_STORAGE = "diggy:providers";
-
-interface ProviderKeys {
-  groq?: string;
-  nvidia?: string;
+async function readSettings(): Promise<ProviderSettings> {
+  try {
+    const stored = await browser.storage.local.get(SETTINGS_KEY);
+    return normalizeSettings(stored[SETTINGS_KEY]);
+  } catch {
+    return normalizeSettings(undefined);
+  }
 }
 
-async function readKeys(): Promise<ProviderKeys> {
-  try {
-    const stored = await browser.storage.local.get(PROVIDER_KEYS_STORAGE);
-    return (stored[PROVIDER_KEYS_STORAGE] as ProviderKeys | undefined) ?? {};
-  } catch {
-    return {};
-  }
+/** Build a provider from the user's settings (or throw a readable reason). */
+function buildProvider(settings: ProviderSettings) {
+  const preset = presetById(settings.presetId);
+  return createOpenAICompatibleProvider({
+    id: settings.presetId,
+    label: preset?.label ?? settings.presetId,
+    baseURL: settings.baseUrl,
+    apiKey: settings.apiKey.trim() || undefined,
+    model: settings.model,
+    sttModel: settings.sttModel || undefined,
+  });
 }
 
 /** The companion's voice: short, plain, spoken out loud. */
 const PERSONA = [
-  "You are DIGGY, a friendly browser companion that lives in the corner of the page.",
-  "Answer the user's spoken question conversationally and briefly: one or two short sentences,",
-  "plain language, no markdown, no lists, no emoji. If you do not know, say so plainly.",
+  "You are DIGGY, a friendly female browser companion that lives in the corner of the page.",
+  "Answer conversationally and briefly: one or two short sentences, plain language,",
+  "no markdown, no lists, no emoji. If you do not know, say so plainly.",
 ].join(" ");
 
 /** `sidePanel` is a valid MV3 API but missing from WXT 0.19 browser typings. */
@@ -54,108 +64,89 @@ function getSidePanel(): SidePanelApi | undefined {
   return (browser as unknown as { sidePanel?: SidePanelApi }).sidePanel;
 }
 
-/** `offscreen` is a valid MV3 API but missing from WXT 0.19 browser typings. */
-interface OffscreenApi {
-  hasDocument?(): Promise<boolean>;
-  createDocument(options: {
-    url: string;
-    reasons: string[];
-    justification: string;
-  }): Promise<void>;
-}
-
-function getOffscreen(): OffscreenApi | undefined {
-  return (browser as unknown as { offscreen?: OffscreenApi }).offscreen;
-}
-
-/** Create the offscreen audio host on demand (idempotent). */
-async function ensureOffscreen(): Promise<void> {
-  const offscreen = getOffscreen();
-  if (!offscreen?.createDocument) return;
-  try {
-    if (offscreen.hasDocument && (await offscreen.hasDocument())) return;
-    await offscreen.createDocument({
-      url: "offscreen.html",
-      reasons: ["USER_MEDIA", "AUDIO_PLAYBACK"],
-      justification: "Record push-to-talk audio and speak replies.",
-    });
-  } catch {
-    // Already exists, or the runtime lacks the API — the recorder reports it.
-  }
-}
-
-/* --- talking to the page's avatar ---------------------------------------- */
+/* --- talking to the page ------------------------------------------------- */
 
 async function sendToTab(message: unknown): Promise<void> {
   try {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     if (tab?.id != null) await browser.tabs.sendMessage(tab.id, message);
   } catch {
-    // No active tab, or no content script in it — nothing to show.
+    // No active tab, or no content script in it.
   }
 }
 
-function toTab(payload: { action: "say" | "status"; text: string }): Promise<void> {
+function toTab(payload: { action: "say" | "status" | "play"; text?: string }): Promise<void> {
   return sendToTab({ type: "diggy:avatar", ...payload });
 }
 
-/* --- voice pipeline ------------------------------------------------------ */
+async function setStatus(text: string): Promise<void> {
+  bus.emit(BusEvents.AvatarStatus, { text });
+  await toTab({ action: "status", text });
+}
 
-/** Recorder adapter: the mic lives in the offscreen host. */
-const recorder: VoiceRecorder = {
-  async start() {
-    await ensureOffscreen();
-    const result = (await browser.runtime.sendMessage({
-      type: OFFSCREEN.start,
-      autoStop: false,
-    })) as { ok: boolean; error?: string } | undefined;
-    return result ?? { ok: false, error: "offscreen recorder unavailable" };
+/* --- dictation (Ctrl+Space toggle, live transcript) ---------------------- */
+
+const dictation = { active: false, interim: "", final: "" };
+
+async function startDictation(): Promise<void> {
+  if (dictation.active) return;
+  dictation.active = true;
+  dictation.interim = "";
+  dictation.final = "";
+  await setStatus(VOICE_STATUS.listening);
+  const settings = await readSettings();
+  await sendToTab({ type: "diggy:dictate", action: "start", lang: settings.lang });
+}
+
+async function stopDictation(): Promise<void> {
+  if (!dictation.active) return;
+  dictation.active = false;
+  await setStatus(VOICE_STATUS.thinking);
+  await sendToTab({ type: "diggy:dictate", action: "stop" });
+  // The page reports `dictate-end` once recognition has flushed its final text.
+}
+
+async function finishDictation(): Promise<void> {
+  const text = (dictation.final || dictation.interim).trim();
+  dictation.interim = "";
+  dictation.final = "";
+  if (!text) {
+    await setStatus("");
+    await toTab({ action: "status", text: "I didn't catch that — Ctrl+Space and try again." });
+    return;
+  }
+  await respond(text);
+}
+
+/** Ctrl+Space drives this: press → listen, press again → answer. */
+const dictateHost = {
+  get state(): string {
+    return dictation.active ? "listening" : "idle";
   },
-  async stop() {
-    const result = (await browser.runtime.sendMessage({ type: OFFSCREEN.stop })) as
-      | { ok: boolean; base64?: string; mimeType?: string; error?: string }
-      | undefined;
-    return result ?? { ok: false, error: "offscreen recorder unavailable" };
-  },
+  press: () => startDictation(),
+  release: () => stopDictation(),
+  toggle: () => (dictation.active ? stopDictation() : startDictation()),
 };
 
-/** STT reads the key at call time so a key added in settings works immediately. */
-const transcribe = async (
-  audio: ArrayBuffer,
-  opts?: { mimeType?: string; language?: string },
-): Promise<string> => {
-  const keys = await readKeys();
-  if (!keys.groq) throw new Error("no-groq-key");
-  return createTranscriber(createGroqProvider({ apiKey: keys.groq }))(audio, opts);
-};
+/* --- answering ----------------------------------------------------------- */
 
-const voice = new VoiceSession({ recorder, transcribe, bus });
-
-/** Ask the model and speak the answer. */
-async function respond(transcript: string): Promise<void> {
-  const keys = await readKeys();
-  if (!keys.groq && !keys.nvidia) {
-    await toTab({
-      action: "status",
-      text: "Add your Groq API key in DIGGY settings (options) to chat.",
-    });
+/** Ask the model and speak + show the answer. */
+async function respond(prompt: string): Promise<void> {
+  const settings = await readSettings();
+  if (!settingsReady(settings)) {
+    await toTab({ action: "status", text: "Add your API key in DIGGY settings to chat." });
     return;
   }
 
-  bus.emit(BusEvents.AvatarStatus, { text: VOICE_STATUS.thinking });
+  await setStatus(VOICE_STATUS.thinking);
 
   let reply: string;
   try {
-    const registry = createBrainRegistry({
-      providers: {
-        groq: keys.groq ? { apiKey: keys.groq } : {},
-        "nvidia-nim": keys.nvidia ? { apiKey: keys.nvidia } : {},
-      },
-    });
-    const result = await registry.chat({
+    const provider = buildProvider(settings);
+    const result = await provider.chat({
       messages: [
         { role: "system", content: PERSONA },
-        { role: "user", content: transcript },
+        { role: "user", content: prompt },
       ],
       temperature: 0.3,
       maxTokens: 320,
@@ -165,16 +156,14 @@ async function respond(transcript: string): Promise<void> {
     reply = `Sorry, I could not reach the model. ${error instanceof Error ? error.message : ""}`.trim();
   }
 
-  bus.emit(BusEvents.AvatarStatus, { text: VOICE_STATUS.speaking });
-  await ensureOffscreen();
-  await browser.runtime.sendMessage({ type: OFFSCREEN.say, text: reply }).catch(() => undefined);
+  await setStatus(VOICE_STATUS.speaking);
   await toTab({ action: "say", text: reply });
-  bus.emit(BusEvents.AvatarStatus, { text: "" });
+  await setStatus("");
 }
 
 /* --- dashboard actions --------------------------------------------------- */
 
-/** Page content, read through the content script (already injected, no host permission). */
+/** Page content, read through the content script (already injected). */
 async function readPage(): Promise<{ text: string; url: string; title: string } | null> {
   try {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
@@ -196,34 +185,23 @@ const ASSIST_PROMPTS: Record<string, string> = {
   opportunities: "List any deadlines, eligibility rules or opportunities on this page.",
 };
 
-async function speak(text: string): Promise<void> {
-  await ensureOffscreen();
-  await browser.runtime.sendMessage({ type: OFFSCREEN.say, text }).catch(() => undefined);
-  await toTab({ action: "say", text });
-}
-
 /** Read the current page and answer a fixed question about it. */
 async function assist(intent: string): Promise<void> {
-  const keys = await readKeys();
-  if (!keys.groq && !keys.nvidia) {
-    await toTab({ action: "status", text: "Add your Groq API key in DIGGY settings." });
+  const settings = await readSettings();
+  if (!settingsReady(settings)) {
+    await toTab({ action: "status", text: "Add your API key in DIGGY settings." });
     return;
   }
 
-  bus.emit(BusEvents.AvatarStatus, { text: VOICE_STATUS.thinking });
+  await setStatus(VOICE_STATUS.thinking);
   const page = await readPage();
   const question = ASSIST_PROMPTS[intent] ?? "Help me with this page.";
   const context = page ? `Page: ${page.title} — ${page.url}\n\n${page.text}` : "(No page content.)";
 
   let reply: string;
   try {
-    const registry = createBrainRegistry({
-      providers: {
-        groq: keys.groq ? { apiKey: keys.groq } : {},
-        "nvidia-nim": keys.nvidia ? { apiKey: keys.nvidia } : {},
-      },
-    });
-    const result = await registry.chat({
+    const provider = buildProvider(settings);
+    const result = await provider.chat({
       messages: [
         { role: "system", content: PERSONA },
         { role: "user", content: `${question}\n\n${context}` },
@@ -236,9 +214,9 @@ async function assist(intent: string): Promise<void> {
     reply = `Sorry, I could not reach the model. ${error instanceof Error ? error.message : ""}`.trim();
   }
 
-  bus.emit(BusEvents.AvatarStatus, { text: VOICE_STATUS.speaking });
-  await speak(reply);
-  bus.emit(BusEvents.AvatarStatus, { text: "" });
+  await setStatus(VOICE_STATUS.speaking);
+  await toTab({ action: "say", text: reply });
+  await setStatus("");
 }
 
 /** Remember the current page as something to watch. */
@@ -259,15 +237,20 @@ async function track(): Promise<void> {
   await toTab({ action: "status", text: `Tracking: ${page.title || page.url}` });
 }
 
-/** A button in the side panel asked for something. */
-async function handleAction(intent: string | undefined): Promise<void> {
+/** A button (or the composer) in the side panel asked for something. */
+async function handleAction(intent: string | undefined, text?: string): Promise<void> {
   if (!intent) return;
   if (intent === "voice") {
-    await voice.toggle();
+    await dictateHost.toggle();
     return;
   }
   if (intent === "track") {
     await track();
+    return;
+  }
+  if (intent === "ask") {
+    const prompt = (text ?? "").trim();
+    if (prompt) await respond(prompt);
     return;
   }
   await assist(intent);
@@ -284,33 +267,33 @@ export default defineBackground(() => {
       .catch((error: unknown) => console.error("[diggy] side panel behavior failed", error));
   });
 
-  // CTRL+SPACE → press/release, plus VOICE_CONTROL from pages that see real key events.
-  bindPushToTalk(voice, {
+  // Ctrl+Space toggles dictation; pages that see real key events get hold-to-talk.
+  bindPushToTalk(dictateHost, {
     commands: browser.commands as unknown as CommandsApi,
     runtime: browser.runtime as unknown as RuntimeMessageApi,
   });
 
-  // The offscreen recorder asks to stop on silence / cap; the session transcribes.
-  // The side panel asks for page work with `diggy:action`.
   browser.runtime.onMessage.addListener((raw: unknown) => {
-    const message = raw as { type?: string; intent?: string } | undefined;
-    if (message?.type === OFFSCREEN.silence) {
-      void voice.onSilence("silence");
-    }
+    const message = raw as { type?: string; intent?: string; text?: string; final?: boolean } | undefined;
+
     if (message?.type === "diggy:action") {
-      void handleAction(message.intent);
+      void handleAction(message.intent, message.text);
+      return undefined;
+    }
+    // Live dictation: show what the user is saying, keep the settled text.
+    if (message?.type === "diggy:dictate-interim" && typeof message.text === "string") {
+      dictation.interim = message.text;
+      void toTab({ action: "status", text: `🎤 ${message.text}` });
+      return undefined;
+    }
+    if (message?.type === "diggy:dictate-final" && typeof message.text === "string") {
+      dictation.final = message.text;
+      return undefined;
+    }
+    if (message?.type === "diggy:dictate-end") {
+      void finishDictation();
+      return undefined;
     }
     return undefined;
-  });
-
-  // A finished transcript → ask the model → speak + show the answer.
-  bus.on<{ text?: string }>(BusEvents.VoiceTranscript, (event) => {
-    const text = event.payload?.text;
-    if (text) void respond(text);
-  });
-
-  // Status lines (Listening… / Transcribing… / Thinking…) ride to the page avatar.
-  bus.on<{ text?: string }>(BusEvents.AvatarStatus, (event) => {
-    void toTab({ action: "status", text: event.payload?.text ?? "" });
   });
 });
