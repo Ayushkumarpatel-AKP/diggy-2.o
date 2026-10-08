@@ -1,7 +1,7 @@
 /**
  * // INTERFACE FOR INTEGRATION
  * interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> { icon: IconName;
- *   label: string; size?: number; outline?: boolean }
+ *   label: string; size?: number; outline?: boolean; disabledReason?: string }
  * // END INTERFACE FOR INTEGRATION
  */
 import type { ButtonHTMLAttributes } from "react";
@@ -13,6 +13,8 @@ export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>
   label: string;
   size?: number;
   outline?: boolean;
+  /** When set, the button is disabled and explains why (title + aria-disabled). */
+  disabledReason?: string;
 }
 
 export function IconButton({
@@ -20,6 +22,9 @@ export function IconButton({
   label,
   size = 16,
   outline,
+  disabledReason,
+  disabled,
+  title,
   className,
   type = "button",
   ...rest
@@ -27,8 +32,17 @@ export function IconButton({
   const classes = ["dg-iconbtn", outline ? "dg-iconbtn--outline" : "", className ?? ""]
     .join(" ")
     .trim();
+  const isDisabled = Boolean(disabledReason) || Boolean(disabled);
   return (
-    <button type={type} className={classes} aria-label={label} title={label} {...rest}>
+    <button
+      type={type}
+      className={classes}
+      aria-label={disabledReason ? `${label} (${disabledReason})` : label}
+      title={disabledReason ?? title ?? label}
+      disabled={isDisabled}
+      aria-disabled={isDisabled || undefined}
+      {...rest}
+    >
       <Icon name={icon} size={size} />
     </button>
   );

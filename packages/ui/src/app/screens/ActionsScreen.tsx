@@ -2,7 +2,8 @@
  * Actions — what DIGGY did, filtered by status.
  *
  * // INTERFACE FOR INTEGRATION
- * interface ActionsScreenProps { onCommand(label: string, intent?: string): void }
+ * interface ActionsScreenProps { onCommand(label: string, intent?: string): void;
+ *   state?: ScreenState; preview?: boolean }
  * // END INTERFACE FOR INTEGRATION
  */
 import { useState } from "react";
@@ -16,10 +17,13 @@ import { Pill } from "../../primitives/Pill.js";
 import { Tabs } from "../../primitives/Tabs.js";
 import { formatClock } from "../format.js";
 import { ScreenHeader } from "../ScreenHeader.js";
+import { StateBlock, PreviewBadge, type ScreenState } from "../ScreenState.js";
 import { sampleActionLog, type ActionStatus } from "../sampleData.js";
 
 export interface ActionsScreenProps {
   onCommand: (label: string, intent?: string) => void;
+  state?: ScreenState;
+  preview?: boolean;
 }
 
 const ACTION_TABS = [
@@ -41,7 +45,11 @@ const STATUS_LABEL: Record<ActionStatus, string> = {
   failed: "Failed",
 };
 
-export function ActionsScreen({ onCommand }: ActionsScreenProps) {
+export function ActionsScreen({
+  onCommand,
+  state = "ready",
+  preview = true,
+}: ActionsScreenProps) {
   const [tab, setTab] = useState("all");
   const rows =
     tab === "all" ? sampleActionLog : sampleActionLog.filter((row) => row.status === tab);
@@ -54,6 +62,7 @@ export function ActionsScreen({ onCommand }: ActionsScreenProps) {
         title="Actions"
         subtitle="See what DIGGY has done for you."
       >
+        {preview ? <PreviewBadge /> : null}
         <Button variant="primary" icon="plus" onClick={() => onCommand("New Action")}>
           New Action
         </Button>
@@ -62,7 +71,27 @@ export function ActionsScreen({ onCommand }: ActionsScreenProps) {
       <Tabs items={ACTION_TABS} value={tab} onChange={setTab} ariaLabel="Action status" />
 
       <Panel>
-        {rows.length === 0 ? (
+        {state !== "ready" ? (
+          <StateBlock
+            state={state}
+            icon="actions"
+            title={
+              state === "loading"
+                ? "Loading your actions…"
+                : state === "empty"
+                  ? "No actions yet"
+                  : "Couldn’t load your actions"
+            }
+            message={
+              state === "empty"
+                ? "Ask DIGGY to fill a form, summarise a page or set a reminder."
+                : state === "error"
+                  ? "The action log didn’t respond. Try again."
+                  : undefined
+            }
+            onRetry={() => onCommand("Retry actions")}
+          />
+        ) : rows.length === 0 ? (
           <div className="dg-empty">
             <Icon name="actions" size={22} />
             <p style={{ margin: "8px 0 0" }}>No actions in this state.</p>

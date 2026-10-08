@@ -2,7 +2,8 @@
  * Vault — local profile with locked fields shown only as tokens.
  *
  * // INTERFACE FOR INTEGRATION
- * interface VaultScreenProps { onCommand(label: string, intent?: string): void }
+ * interface VaultScreenProps { onCommand(label: string, intent?: string): void;
+ *   state?: ScreenState; preview?: boolean }
  * // END INTERFACE FOR INTEGRATION
  */
 import { useState, type ReactNode } from "react";
@@ -13,10 +14,13 @@ import { Button } from "../../primitives/Button.js";
 import { Panel } from "../../primitives/Card.js";
 import { Pill } from "../../primitives/Pill.js";
 import { ScreenHeader } from "../ScreenHeader.js";
+import { StateBlock, PreviewBadge, type ScreenState } from "../ScreenState.js";
 import { sampleProfile } from "../sampleData.js";
 
 export interface VaultScreenProps {
   onCommand: (label: string, intent?: string) => void;
+  state?: ScreenState;
+  preview?: boolean;
 }
 
 const SECTIONS = [
@@ -125,7 +129,7 @@ function FieldTable({ rows }: { rows: FieldRow[] }) {
   );
 }
 
-export function VaultScreen({ onCommand }: VaultScreenProps) {
+export function VaultScreen({ onCommand, state = "ready", preview = true }: VaultScreenProps) {
   const [section, setSection] = useState("personal");
   const rows = rowsFor(section, sampleProfile);
   const active = SECTIONS.find((item) => item.id === section) ?? SECTIONS[0];
@@ -137,7 +141,9 @@ export function VaultScreen({ onCommand }: VaultScreenProps) {
         tone="primary"
         title="Vault"
         subtitle="Store your information for quick access and auto-fill."
-      />
+      >
+        {preview ? <PreviewBadge /> : null}
+      </ScreenHeader>
 
       <div className="dg-vault">
         <nav className="dg-vault__nav" aria-label="Vault sections">
@@ -146,6 +152,7 @@ export function VaultScreen({ onCommand }: VaultScreenProps) {
               key={item.id}
               type="button"
               className={item.id === section ? "dg-nav__item dg-nav__item--active" : "dg-nav__item"}
+              aria-current={item.id === section ? "true" : undefined}
               onClick={() => setSection(item.id)}
             >
               {item.label}
@@ -156,17 +163,46 @@ export function VaultScreen({ onCommand }: VaultScreenProps) {
         <Panel
           title={active?.label ?? "Vault"}
           action={
-            <Button variant="outline" size="sm" icon="edit" onClick={() => onCommand("Edit vault section")}>
+            <Button
+              variant="outline"
+              size="sm"
+              icon="edit"
+              onClick={() => onCommand("Edit vault section")}
+            >
               Edit
             </Button>
           }
         >
-          <FieldTable rows={rows} />
-          <div className="dg-inline" style={{ marginTop: 12 }}>
-            <Pill tone="warning" icon="lock">
-              Locked values never leave this device — prompts and logs only see tokens.
-            </Pill>
-          </div>
+          {state !== "ready" ? (
+            <StateBlock
+              state={state}
+              icon="vault"
+              title={
+                state === "loading"
+                  ? "Unlocking your vault…"
+                  : state === "empty"
+                    ? "Your vault is empty"
+                    : "Couldn’t open your vault"
+              }
+              message={
+                state === "empty"
+                  ? "Add your details to auto-fill forms without retyping them."
+                  : state === "error"
+                    ? "The vault didn’t respond. Try again."
+                    : undefined
+              }
+              onRetry={() => onCommand("Retry vault")}
+            />
+          ) : (
+            <>
+              <FieldTable rows={rows} />
+              <div className="dg-inline" style={{ marginTop: 12 }}>
+                <Pill tone="warning" icon="lock">
+                  Locked values never leave this device — prompts and logs only see tokens.
+                </Pill>
+              </div>
+            </>
+          )}
         </Panel>
       </div>
     </>

@@ -11,6 +11,7 @@ import { NAV_TABS, type NavTabId } from "@diggy/shared";
 import { DiggyLogo } from "../DiggyLogo.js";
 import { Icon, type IconName } from "../Icon.js";
 import { AvatarChip } from "../primitives/AvatarChip.js";
+import { IconButton } from "../primitives/IconButton.js";
 
 export interface SidebarProps {
   active: NavTabId;
@@ -57,16 +58,13 @@ export function Sidebar({ active, onSelect, user, onSettings, footer }: SidebarP
             onClick={onSettings}
           />
         ) : null}
-        <button
-          type="button"
-          className="dg-iconbtn"
-          aria-label="Settings"
-          title="Settings"
+        <IconButton
+          icon="gear"
+          label="Settings"
           onClick={onSettings}
+          disabledReason={onSettings ? undefined : "Settings aren’t available in this host."}
           style={{ marginLeft: "auto" }}
-        >
-          <Icon name="gear" size={16} />
-        </button>
+        />
       </div>
 
       {footer}

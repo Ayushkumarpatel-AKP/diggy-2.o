@@ -3,7 +3,33 @@
 html,
 body {
   margin: 0;
+  height: 100%;
   background: #f2f3f6;
+}
+
+/* The demo stacks a topbar over the Dashboard; let the Dashboard fill the rest
+ * so its pinned composer and internal scrolling behave exactly like the panel. */
+#root {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+#root > .demo-topbar {
+  flex: 0 0 auto;
+}
+
+#root > .dg-root {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
+#root > .demo-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 
 .demo-topbar {
@@ -27,12 +53,14 @@ body {
   font-weight: 700;
   font-size: 14px;
   margin-right: 6px;
+  flex: 0 0 auto;
 }
 
 .demo-tabs {
   display: flex;
   gap: 5px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .demo-tab {
@@ -62,6 +90,22 @@ body {
 .demo-hint {
   font-size: 11.5px;
   color: var(--dg-muted);
+}
+
+.demo-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.demo-select {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--dg-line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--dg-ink-soft);
 }
 
 .demo-view {
@@ -134,4 +178,16 @@ body {
   display: flex;
   align-items: flex-end;
   justify-content: flex-end;
+}
+
+@media (max-width: 560px) {
+  .demo-topbar {
+    padding: 8px 12px;
+  }
+  .demo-spacer {
+    display: none;
+  }
+  .demo-state {
+    flex-basis: 100%;
+  }
 }

@@ -1,7 +1,7 @@
 /**
  * // INTERFACE FOR INTEGRATION
  * interface PillProps { tone?: Tone; outline?: boolean; dot?: boolean; icon?: IconName;
- *   className?: string; children?: ReactNode }
+ *   className?: string; title?: string; children?: ReactNode }
  * // END INTERFACE FOR INTEGRATION
  */
 import type { ReactNode } from "react";
@@ -15,6 +15,7 @@ export interface PillProps {
   dot?: boolean;
   icon?: IconName;
   className?: string;
+  title?: string;
   children?: ReactNode;
 }
 
@@ -24,6 +25,7 @@ export function Pill({
   dot,
   icon,
   className,
+  title,
   children,
 }: PillProps) {
   const classes = [
@@ -34,7 +36,7 @@ export function Pill({
     .join(" ")
     .trim();
   return (
-    <span className={classes}>
+    <span className={classes} title={title}>
       {dot ? <span className="dg-pill__dot" /> : null}
       {icon ? <Icon name={icon} size={12} /> : null}
       {children}

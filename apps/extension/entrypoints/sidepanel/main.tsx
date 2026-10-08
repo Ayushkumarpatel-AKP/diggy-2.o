@@ -1,9 +1,9 @@
 /**
  * Side panel entrypoint — the real 7-tab DIGGY dashboard.
  *
- * The dashboard is presentational; every action a button triggers is forwarded
- * to the extension runtime (`diggy:action`), which owns the page reading, the
- * model call and the spoken reply.
+ * The dashboard is presentational; every action a button triggers (and every
+ * question the composer sends) is forwarded to the extension runtime
+ * (`diggy:action`), which owns the page reading, the model call and the reply.
  */
 import { createRoot } from "react-dom/client";
 
@@ -19,6 +19,11 @@ function SidePanel() {
       }}
       onAction={(intent) => {
         void browser.runtime.sendMessage({ type: "diggy:action", intent }).catch(() => undefined);
+      }}
+      onAsk={(text) => {
+        void browser.runtime
+          .sendMessage({ type: "diggy:action", intent: "ask", text })
+          .catch(() => undefined);
       }}
     />
   );

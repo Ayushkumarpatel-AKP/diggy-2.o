@@ -2,7 +2,8 @@
  * // INTERFACE FOR INTEGRATION
  * type ButtonVariant = "primary" | "soft" | "outline" | "ghost";
  * interface ButtonProps { variant?: ButtonVariant; size?: "sm" | "md"; icon?: IconName;
- *   trailingIcon?: IconName; children?: ReactNode } & ButtonHTMLAttributes<HTMLButtonElement>;
+ *   trailingIcon?: IconName; disabledReason?: string; children?: ReactNode }
+ *   & ButtonHTMLAttributes<HTMLButtonElement>;
  * // END INTERFACE FOR INTEGRATION
  */
 import type { ButtonHTMLAttributes } from "react";
@@ -16,6 +17,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: "sm" | "md";
   icon?: IconName;
   trailingIcon?: IconName;
+  /** When set, the button is disabled and explains why (title + aria-disabled). */
+  disabledReason?: string;
 }
 
 export function Button({
@@ -23,6 +26,9 @@ export function Button({
   size = "md",
   icon,
   trailingIcon,
+  disabledReason,
+  disabled,
+  title,
   className,
   children,
   type = "button",
@@ -36,8 +42,16 @@ export function Button({
   ]
     .join(" ")
     .trim();
+  const isDisabled = Boolean(disabledReason) || Boolean(disabled);
   return (
-    <button type={type} className={classes} {...rest}>
+    <button
+      type={type}
+      className={classes}
+      disabled={isDisabled}
+      aria-disabled={isDisabled || undefined}
+      title={disabledReason ?? title}
+      {...rest}
+    >
       {icon ? <Icon name={icon} size={15} /> : null}
       {children}
       {trailingIcon ? <Icon name={trailingIcon} size={15} /> : null}
