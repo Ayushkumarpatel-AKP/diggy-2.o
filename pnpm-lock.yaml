@@ -51,6 +51,9 @@ importers:
 
   apps/extension:
     dependencies:
+      '@diggy/avatar':
+        specifier: workspace:*
+        version: link:../../packages/avatar
       '@diggy/shared':
         specifier: workspace:*
         version: link:../../packages/shared

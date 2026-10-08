@@ -39,7 +39,7 @@
  */
 import { Component, Suspense, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useSyncExternalStore } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { AvatarAPI, AvatarCapabilityReport, AvatarState } from "@diggy/shared";
 
 import { AvatarController } from "./controller.js";
@@ -100,6 +100,20 @@ function FrameDriver({ onFrame }: { onFrame: (delta: number) => void }): null {
   return null;
 }
 
+/**
+ * Frames the whole character: the model stands on y=0 and is ~2.15 units tall,
+ * so aim at its mid-point instead of the origin (which would show only the legs).
+ */
+function CameraRig(): null {
+  const camera = useThree((state) => state.camera);
+  useEffect(() => {
+    camera.position.set(0, CAMERA_TARGET_Y, CAMERA_DISTANCE);
+    camera.lookAt(0, CAMERA_TARGET_Y, 0);
+    camera.updateProjectionMatrix();
+  }, [camera]);
+  return null;
+}
+
 /** Catches renderer load errors (notably the suspended VRM loader). */
 class RendererBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   override state = { failed: false };
@@ -118,6 +132,10 @@ class RendererBoundary extends Component<{ children: ReactNode }, { failed: bool
 }
 
 const CORNER_OFFSET = 16;
+
+/** Framing for the corner box: the model stands on y=0 and is ~2.15 units tall. */
+const CAMERA_TARGET_Y = 1.15;
+const CAMERA_DISTANCE = 4.6;
 
 function verticalEdge(corner: AvatarCorner, offset: number): CSSProperties {
   return corner.includes("top") ? { top: offset } : { bottom: offset };
@@ -237,12 +255,13 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
           <Canvas
             dpr={[1, 2]}
             frameloop="always"
-            camera={{ position: [0, 1.2, 3.4], fov: 30 }}
+            camera={{ position: [0, CAMERA_TARGET_Y, CAMERA_DISTANCE], fov: 30 }}
             gl={{ alpha: true, antialias: true }}
             style={{ width: "100%", height: "100%", background: "transparent" }}
             onCreated={({ gl }) => gl.setClearAlpha(0)}
           >
             <ambientLight intensity={1.1} />
+            <CameraRig />
             <hemisphereLight args={[0xffffff, 0x3a3a3a, 1.2]} />
             <directionalLight position={[2, 4, 3]} intensity={2} />
             <pointLight position={[-2, 2, -2]} intensity={0.7} />

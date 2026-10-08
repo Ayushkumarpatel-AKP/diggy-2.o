@@ -51,11 +51,13 @@ React resolve to its production build and breaks `@diggy/ui`'s `Dashboard.dom.te
 
 ## Follow-ups (hardening)
 
-1. **Mount the avatar in the extension** — Home hero / Assistant still use the golden-D mark as a
-   `// TEMP STUB — blocked on avatar`; mount `<Avatar assetBase="assets/avatar" />` and forward the
-   offscreen lip-sync level to it.
-2. **Browser verification** — FBX render (no headless WebGL here), pixel diff vs
-   `diggy motion/Diggy Pastel Productivity Dashboard.png`, and the CTRL+SPACE → STT → reply round-trip.
+1. **Avatar is now mounted** (done) — the content script renders `<Avatar size={140}>` bottom-right of
+   every page inside a Shadow DOM (`as-extension` demo posture: the content script is *static* so the
+   companion is visible immediately; the production posture keeps host access optional + runtime
+   registration). Still to do: forward the offscreen lip-sync level to the avatar.
+2. **Browser verification** — FBX render verified in Edge (headless via the e2e harness) and framed to
+   show the whole body; still to capture a pixel diff vs `diggy motion/Diggy Pastel Productivity Dashboard.png`
+   and the CTRL+SPACE → STT → reply round-trip.
 3. **STT endpoint** — `apps/extension/entrypoints/background.ts` posts clips to
    `http://localhost:17323/api/stt`; `services/api` must expose it, and the extension needs a
    localhost host permission (requested at runtime).

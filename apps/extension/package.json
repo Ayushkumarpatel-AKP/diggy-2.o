@@ -11,6 +11,7 @@
     "postinstall": "wxt prepare"
   },
   "dependencies": {
+    "@diggy/avatar": "workspace:*",
     "@diggy/shared": "workspace:*",
     "@diggy/ui": "workspace:*",
     "@diggy/voice": "workspace:*",

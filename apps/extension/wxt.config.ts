@@ -20,6 +20,10 @@ export default defineConfig({
     ],
     // Host access is requested at runtime, never bundled as a required permission.
     optional_host_permissions: ["<all_urls>"],
+    // The FBX avatar + textures the content script loads from extension URLs.
+    web_accessible_resources: [
+      { resources: ["assets/avatar/*"], matches: ["<all_urls>"] },
+    ],
     content_security_policy: {
       extension_pages: "script-src 'self'; object-src 'self'",
     },
