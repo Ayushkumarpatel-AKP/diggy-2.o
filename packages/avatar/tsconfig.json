@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "react-jsx"
+  },
+  // No `rootDir`: this package consumes workspace sources (e.g. @diggy/shared)
+  // directly, which live outside `src`.
+  "include": ["src", "test"]
+}
