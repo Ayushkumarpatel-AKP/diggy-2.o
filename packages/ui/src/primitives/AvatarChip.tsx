@@ -33,8 +33,9 @@ export function AvatarChip({
     </span>
   );
   if (!name && !showGear) return avatar;
-  return (
-    <button type="button" className="dg-avatar-chip" onClick={onClick}>
+
+  const body = (
+    <>
       {avatar}
       {name ? (
         <span className="dg-avatar-chip__meta">
@@ -43,6 +44,17 @@ export function AvatarChip({
         </span>
       ) : null}
       {showGear ? <Icon name="gear" size={16} /> : null}
+    </>
+  );
+
+  // No handler in this host → render as a static chip rather than a dead button.
+  if (!onClick) {
+    return <span className="dg-avatar-chip dg-avatar-chip--static">{body}</span>;
+  }
+
+  return (
+    <button type="button" className="dg-avatar-chip" onClick={onClick}>
+      {body}
     </button>
   );
 }

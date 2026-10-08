@@ -44,6 +44,7 @@ export * from "./primitives/AvatarChip.js";
 export * from "./primitives/IconButton.js";
 export * from "./primitives/QuickAction.js";
 export * from "./primitives/StatusBubble.js";
+export * from "./primitives/Composer.js";
 
 export * from "./hooks/statusQueue.js";
 export * from "./hooks/useHotkey.js";
@@ -53,6 +54,7 @@ export * from "./hooks/useStatusQueue.js";
 export * from "./app/format.js";
 export * from "./app/sampleData.js";
 export * from "./app/ScreenHeader.js";
+export * from "./app/ScreenState.js";
 export * from "./app/Sidebar.js";
 export * from "./app/CommandPalette.js";
 export * from "./app/Dashboard.js";

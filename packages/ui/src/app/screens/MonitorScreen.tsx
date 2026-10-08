@@ -2,7 +2,8 @@
  * Monitor — watch list with engine tabs, per-watch tags and status.
  *
  * // INTERFACE FOR INTEGRATION
- * interface MonitorScreenProps { onCommand(label: string, intent?: string): void }
+ * interface MonitorScreenProps { onCommand(label: string, intent?: string): void;
+ *   state?: ScreenState; preview?: boolean }
  * // END INTERFACE FOR INTEGRATION
  */
 import { useState } from "react";
@@ -15,10 +16,13 @@ import { ListRow } from "../../primitives/ListRow.js";
 import { Pill } from "../../primitives/Pill.js";
 import { Tabs } from "../../primitives/Tabs.js";
 import { ScreenHeader } from "../ScreenHeader.js";
+import { StateBlock, PreviewBadge, type ScreenState } from "../ScreenState.js";
 import { sampleWatches } from "../sampleData.js";
 
 export interface MonitorScreenProps {
   onCommand: (label: string, intent?: string) => void;
+  state?: ScreenState;
+  preview?: boolean;
 }
 
 const MONITOR_TABS = [
@@ -35,7 +39,11 @@ function hostname(url: string): string {
   }
 }
 
-export function MonitorScreen({ onCommand }: MonitorScreenProps) {
+export function MonitorScreen({
+  onCommand,
+  state = "ready",
+  preview = true,
+}: MonitorScreenProps) {
   const [tab, setTab] = useState("websites");
   const rows = tab === "websites" ? sampleWatches : [];
 
@@ -47,7 +55,8 @@ export function MonitorScreen({ onCommand }: MonitorScreenProps) {
         title="Monitor"
         subtitle="Track websites, get notified when something important changes."
       >
-        <Button variant="primary" icon="plus" onClick={() => onCommand("Add Website")}>
+        {preview ? <PreviewBadge /> : null}
+        <Button variant="primary" icon="plus" onClick={() => onCommand("Add Website", "track")}>
           Add Website
         </Button>
       </ScreenHeader>
@@ -55,11 +64,33 @@ export function MonitorScreen({ onCommand }: MonitorScreenProps) {
       <Tabs items={MONITOR_TABS} value={tab} onChange={setTab} ariaLabel="Monitor sources" />
 
       <Panel>
-        {rows.length === 0 ? (
-          <div className="dg-empty">
-            <Icon name="globe" size={22} />
-            <p style={{ margin: "8px 0 0" }}>Nothing tracked here yet.</p>
-          </div>
+        {state !== "ready" ? (
+          <StateBlock
+            state={state}
+            icon="globe"
+            title={
+              state === "loading"
+                ? "Loading your watchlist…"
+                : state === "empty"
+                  ? "Nothing tracked yet"
+                  : "Couldn’t load your watchlist"
+            }
+            message={
+              state === "empty"
+                ? "Open a page and hit “Track this site” to start monitoring it."
+                : state === "error"
+                  ? "The monitor didn’t respond. Try again."
+                  : undefined
+            }
+            onRetry={() => onCommand("Retry monitor")}
+          />
+        ) : rows.length === 0 ? (
+          <StateBlock
+            state="empty"
+            icon="globe"
+            title="Nothing tracked here yet"
+            message="Switch tabs, or add a website to this source."
+          />
         ) : (
           rows.map((watch) => (
             <ListRow

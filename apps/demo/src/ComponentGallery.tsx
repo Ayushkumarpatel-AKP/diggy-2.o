@@ -37,9 +37,13 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 export function ComponentGallery() {
   const [tab, setTab] = useState("one");
+  const [note, setNote] = useState("Interactive demos write here.");
 
   return (
     <div className="demo-view">
+      <p className="demo-hint" role="status" aria-live="polite">
+        {note}
+      </p>
       <Section title="Brand — golden-D logo & browser dots">
         <div className="demo-row">
           <DiggyLogo size={22} />
@@ -114,7 +118,14 @@ export function ComponentGallery() {
           <Card padded interactive>
             Interactive card
           </Card>
-          <Panel title="Panel with action" action={<button className="dg-linkbtn">View All</button>}>
+          <Panel
+            title="Panel with action"
+            action={
+              <button className="dg-linkbtn" onClick={() => setNote("View All clicked")}>
+                View All
+              </button>
+            }
+          >
             <p style={{ margin: 0, fontSize: 12.5, color: "var(--dg-muted)" }}>
               Panels group a titled region; cards hold content.
             </p>
@@ -150,7 +161,7 @@ export function ComponentGallery() {
             tone="violet"
             title="Interactive row (clickable)"
             subtitle="Hover to see the surface change"
-            onClick={() => undefined}
+            onClick={() => setNote("List row clicked")}
           />
         </Panel>
       </Section>

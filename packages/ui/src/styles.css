@@ -51,6 +51,7 @@
   --dg-shadow-lg: 0 12px 32px rgba(17, 24, 39, 0.1);
 
   --dg-sidebar-w: 232px;
+  --dg-composer-h: 68px;
   --dg-font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
@@ -64,13 +65,23 @@
   background: var(--dg-bg);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  height: 100vh;
+  height: 100dvh;
+  width: 100%;
+  max-width: 100vw;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* ------------------------------------------------------------------ shell */
 
 .dg-shell {
   display: flex;
-  min-height: 100vh;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
   background: var(--dg-bg);
 }
 
@@ -154,17 +165,49 @@
 /* ------------------------------------------------------------------ main */
 
 .dg-main {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
-  padding: 18px 22px 28px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--dg-bg);
 }
 
+/* The scroll region: everything above the pinned composer. */
 .dg-content {
-  max-width: 1080px;
-  margin: 0 auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: 18px 22px 22px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.dg-content > * {
+  width: 100%;
+  max-width: 1080px;
+  margin-inline: auto;
+  /* Never compress a block to fit — the content area scrolls instead, so nothing
+   * (e.g. the hero's avatar/bubble) is ever clipped. */
+  flex: 0 0 auto;
+}
+
+/* The composer stays pinned to the bottom of the panel. */
+.dg-composer-dock {
+  flex: 0 0 auto;
+  padding: 10px 22px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: var(--dg-surface);
+  border-top: 1px solid var(--dg-line);
+  position: sticky;
+  bottom: 0;
+  z-index: 15;
+}
+
+.dg-composer-dock .dg-composer {
+  max-width: 1080px;
+  margin: 0 auto;
 }
 
 /* ------------------------------------------------------------ screen head */
@@ -173,6 +216,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
+  row-gap: 8px;
 }
 
 .dg-screen-header__icon {
@@ -414,6 +459,10 @@
 
 .dg-tile__body {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
 }
 
 .dg-tile__value {
@@ -426,9 +475,8 @@
 .dg-tile__label {
   font-size: 12px;
   color: var(--dg-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .dg-tile__sub {
@@ -484,9 +532,10 @@
   border-radius: var(--dg-radius-pill);
   font-size: 11px;
   font-weight: 600;
-  line-height: 1;
+  line-height: 1.25;
   padding: 5px 9px;
-  white-space: nowrap;
+  white-space: normal;
+  text-align: left;
 }
 
 .dg-pill__dot {
@@ -991,10 +1040,11 @@
   background: var(--dg-surface);
   border: 1px solid var(--dg-line);
   border-radius: var(--dg-radius-pill);
-  padding: 7px 8px 7px 16px;
+  padding: 6px 8px 6px 16px;
   box-shadow: var(--dg-shadow-sm);
 }
-.dg-composer input {
+.dg-composer input,
+.dg-composer__input {
   flex: 1;
   min-width: 0;
   border: 0;
@@ -1002,11 +1052,18 @@
   background: transparent;
   font: inherit;
   font-size: 13px;
+  color: var(--dg-ink);
+}
+.dg-composer input::placeholder {
+  color: var(--dg-muted);
+}
+.dg-composer .dg-iconbtn {
+  flex: 0 0 auto;
 }
 
 .dg-composer__send {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border: 0;
   background: var(--dg-primary-gradient);
@@ -1015,6 +1072,16 @@
   place-items: center;
   cursor: pointer;
   flex: 0 0 auto;
+  transition: box-shadow 0.15s ease, opacity 0.15s ease;
+}
+.dg-composer__send:hover:not(:disabled) {
+  box-shadow: 0 3px 12px rgba(245, 179, 1, 0.45);
+}
+.dg-composer__send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--dg-muted-soft);
+  color: var(--dg-muted);
 }
 
 /* ---------------------------------------------------------------- chat */
@@ -1395,19 +1462,111 @@
   font-size: 12.5px;
 }
 
-/* status bubble docked to the panel corner (avatar-head anchored companion) */
+/* status bubble docked to the panel corner (avatar-head anchored companion).
+ * It floats ABOVE the pinned composer and never swallows taps meant for the panel. */
 .dg-statusdock {
   position: fixed;
   right: 14px;
-  bottom: 14px;
+  bottom: calc(var(--dg-composer-h, 68px) + 14px + env(safe-area-inset-bottom, 0px));
   z-index: 40;
-  max-width: min(340px, 78vw);
-  /* Never swallow taps meant for the panel behind it. */
+  max-width: min(340px, calc(100vw - 28px));
   pointer-events: none;
 }
 
 .dg-statusdock > * {
   pointer-events: auto;
+}
+
+/* ------------------------------------------------------- home bar + preview */
+
+.dg-homebar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dg-homebar .dg-search {
+  flex: 1;
+  min-width: 0;
+}
+
+.dg-preview {
+  flex: 0 0 auto;
+}
+
+/* ----------------------------------------------------------- screen states */
+
+.dg-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  padding: 22px 12px;
+  color: var(--dg-muted);
+}
+.dg-state__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--dg-radius-lg);
+  display: grid;
+  place-items: center;
+}
+.dg-state__title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--dg-ink);
+}
+.dg-state__msg {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--dg-muted);
+  max-width: 320px;
+}
+.dg-state__skeleton {
+  width: min(320px, 100%);
+  margin-top: 8px;
+}
+.dg-state__skeleton .dg-skeleton-line {
+  margin-bottom: 8px;
+}
+.dg-state__skeleton .dg-skeleton-line:last-child {
+  width: 62%;
+}
+
+.dg-spinner {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2.5px solid var(--dg-line);
+  border-top-color: var(--dg-primary);
+  animation: dg-spin 0.8s linear infinite;
+}
+@keyframes dg-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Static (non-interactive) avatar chip — no hover, no pointer. */
+.dg-avatar-chip--static {
+  cursor: default;
+}
+.dg-avatar-chip--static:hover {
+  background: transparent;
+}
+
+/* A pill rendered as a real button (Integrations "Connected"). */
+.dg-pillbtn {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  min-height: 32px;
+}
+.dg-pillbtn:hover {
+  filter: brightness(0.97);
 }
 
 /* --------------------------------------------------------------- misc */
@@ -1478,8 +1637,11 @@
   .dg-sidebar {
     display: none;
   }
-  .dg-main {
-    padding: 12px 14px 26px;
+  .dg-content {
+    padding: 12px 14px 16px;
+  }
+  .dg-composer-dock {
+    padding: 8px 14px calc(8px + env(safe-area-inset-bottom, 0px));
   }
   /* Stack the hero so the greeting is never squeezed into a one-word column. */
   .dg-hero {
@@ -1494,18 +1656,19 @@
     width: 84px;
     height: 84px;
   }
+  /* Persistent section switcher for narrow surfaces — all 7 tabs, one tap away. */
   .dg-tabbar {
     display: flex;
     gap: 6px;
     overflow-x: auto;
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
-    padding: 2px 0 12px;
-    margin-bottom: 4px;
+    padding: 10px 14px;
     position: sticky;
     top: 0;
     z-index: 20;
-    background: var(--dg-bg);
+    background: var(--dg-surface);
+    border-bottom: 1px solid var(--dg-line);
   }
   .dg-tabbar::-webkit-scrollbar {
     height: 6px;
@@ -1521,18 +1684,94 @@
   }
 }
 
-/* Very narrow (a real browser side panel): one column, so no tile label is
- * ever clipped and every control keeps a comfortable tap target. */
+/* A real browser side panel: 320px–560px, one column, no clipped text,
+ * comfortable 40px+ tap targets, safe-area aware. */
 @media (max-width: 560px) {
   .dg-tiles,
   .dg-grid--4,
-  .dg-grid--3 {
+  .dg-grid--3,
+  .dg-quickgrid {
     grid-template-columns: 1fr;
   }
   .dg-greeting {
     font-size: 22px;
   }
-  .dg-quickgrid {
-    grid-template-columns: 1fr;
+  .dg-hero__avatar {
+    width: 72px;
+    height: 72px;
+  }
+  .dg-content {
+    padding: 12px 12px 16px;
+  }
+
+  /* Touch targets: never smaller than 40px. */
+  .dg-tab {
+    min-height: 40px;
+    padding: 10px 14px;
+  }
+  .dg-nav__item {
+    min-height: 40px;
+    padding: 10px 12px;
+  }
+  .dg-iconbtn {
+    width: 40px;
+    height: 40px;
+  }
+  .dg-btn {
+    min-height: 40px;
+  }
+  .dg-linkbtn {
+    min-height: 40px;
+  }
+  .dg-chip {
+    min-height: 40px;
+  }
+  .dg-quick {
+    min-height: 48px;
+  }
+  .dg-select {
+    min-height: 40px;
+  }
+  .dg-pillbtn {
+    min-height: 40px;
+  }
+  .dg-palette__item {
+    min-height: 44px;
+  }
+  .dg-composer input,
+  .dg-composer__input {
+    min-height: 40px;
+  }
+
+  /* Vault section nav becomes a scrollable strip instead of a tall list. */
+  .dg-vault__nav {
+    flex-direction: row;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    gap: 6px;
+    padding-bottom: 4px;
+  }
+  .dg-vault__nav .dg-nav__item {
+    flex: 0 0 auto;
+    width: auto;
+    white-space: nowrap;
+  }
+
+  /* List rows stack their trail under the body so nothing is squeezed off. */
+  .dg-row {
+    flex-wrap: wrap;
+  }
+  .dg-row__trail {
+    margin-left: auto;
+  }
+
+  .dg-statusdock {
+    right: 10px;
+    max-width: calc(100vw - 20px);
+  }
+  .dg-bubble {
+    max-width: 100%;
   }
 }
+
