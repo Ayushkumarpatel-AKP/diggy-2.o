@@ -9,7 +9,7 @@ Project: `C:\Users\Ayush\orca\projects\DIGGY 2.O` (base `main`, Phase 0 @ `19aff
 | Worker | Worktree / branch | Terminal (handle) | Brief | State |
 |---|---|---|---|---|
 | core | `orca/workspaces/DIGGY 2.O/core` / `core` | `term_dcb55797-9e71-4bfa-b46f-620fb178d026` | `agents/core.md` | **done** — merged to `main` |
-| avatar | `orca/workspaces/DIGGY 2.O/avatar` / `avatar` | `term_d0795e6e-e881-4d4a-adfc-249fdc8dba31` | `agents/avatar.md` | running (wave 2) |
+| avatar | `orca/workspaces/DIGGY 2.O/avatar` / `avatar` | `term_d0795e6e-e881-4d4a-adfc-249fdc8dba31` | `agents/avatar.md` | **done** — merged to `main` |
 | brain | `orca/workspaces/DIGGY 2.O/brain` / `brain` | `term_86cc3e83-e399-4d2c-8a17-044e817e18de` | `agents/brain.md` | **done** — merged to `main` |
 | ui | `orca/workspaces/DIGGY 2.O/ui` / `ui` | `term_518302c6-4319-46bc-b4d5-57f01866d000` | `agents/ui.md` | running (wave 2) |
 | monitor | `DIGGY 2.O/monitor` / `monitor` | — | `agents/monitor.md` | queued (wave 3) |
@@ -65,7 +65,7 @@ orca terminal read --terminal <handle> --limit 45 --json
   `~1.1.5` — 1.2.x pulls `@vitejs/plugin-react@6`, incompatible with WXT 0.19's Vite 5). Re-run
   `$env:NODE_ENV="development"; pnpm install` after merging.
 
-### brain (branch `brain`) — ✅ done
+### brain (branch `brain`) — ✅ done, merged
 
 - **New package** `packages/core` (`@diggy/core`) implementing the `Provider` / `ProviderRegistry`
   contracts from `packages/shared/src/contracts/provider.ts` (its own `Provider`, not the AI SDK).
@@ -94,3 +94,28 @@ orca terminal read --terminal <handle> --limit 45 --json
   `providers/http.ts` is now redundant but remains valid; drop it during the hardening wave.
 - **Note:** `pnpm-lock.yaml` changed (new `@diggy/core` importer). Re-run
   `$env:NODE_ENV="development"; pnpm install` after merging.
+
+### avatar (branch `avatar`) — ✅ done, merged
+
+- **Scope touched**: `packages/avatar/**`, `assets/avatar/**`, `agents/STATUS.md`, `pnpm-lock.yaml`.
+  Nothing else. FBX is primary; VRM is the fallback only.
+- **Assets**: copied `diggy motion/Chiori.fbx` + the 8 clip FBX + `tex/*` and
+  `projects/diggy/assets/avatar/AvatarSample_I.vrm` into `assets/avatar/` (names unchanged).
+- **New package `@diggy/avatar`**: `src/state-machine.ts` (12-state machine), `src/expressions.ts`
+  (app.js presets ported verbatim), `src/capability.ts` (+ ValveBiped bone aliases), `src/clips.ts`,
+  `src/procedural.ts`, `src/framing.ts` (`frameFbx` port), `src/controller.ts` (headless `AvatarAPI`),
+  `src/FbxAvatar.tsx` (R3F + `FBXLoader` + `AnimationMixer`, 30 FPS cap, hidden-tab pause),
+  `src/VrmAvatar.tsx` (three-vrm fallback), `src/index.tsx` (bottom-right mount, pointer-events only
+  on the avatar, 💭 status line). 6 test files.
+- **Capability report for `Chiori.fbx`** (parsed offline): 122 bones (ValveBiped naming), 1 skinned
+  mesh, **30,126 triangles** (0.4% over the 30k target → report emits a budget warning), 19 morph
+  targets (`Smile…`, `Blink`, `Angry`, `Confused`, `Sleepy` via `Sad*`, etc.). All 8 clips load
+  (durations 1.1–8.87s, 67 tracks each); 65/66 track targets bind to base bones (the 66th is the
+  `Chiori_ARM` root node, also present); every clip animates the head, so gaze layering is safe.
+- **Gates**: `pnpm -w typecheck` ✅ · `pnpm -w test` ✅ (41 avatar tests + 9 shared) · `pnpm -w build`
+  ✅ · `pnpm --filter @diggy/extension build` ✅. Tests prove all 12 states map, priority/auto-return,
+  0.2–0.35s cross-fades, and that missing clips/bones/morphs degrade without throwing.
+- **Notes / follow-ups**: brief says "9 clips"; disk ships 8 (+`Chiori.fbx` = 9 FBX total). Avatar is
+  not yet wired into `apps/extension` (UI worker owns that); consume via
+  `<Avatar assetBase="/assets/avatar" />`. `@pixiv/three-vrm` transitive types are duck-typed locally
+  because its extensionless cross-package re-exports do not resolve under `NodeNext`.
