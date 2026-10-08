@@ -9,6 +9,8 @@ export interface ChatMessage {
   content: string;
   toolCallId?: string;
   name?: string;
+  /** Tool calls emitted by an assistant turn; echoed back on the next request. */
+  toolCalls?: ToolCall[];
 }
 
 export interface ToolSchema {
