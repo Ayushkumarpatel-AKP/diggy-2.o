@@ -9,9 +9,9 @@ Project: `C:\Users\Ayush\orca\projects\DIGGY 2.O` (base `main`, Phase 0 @ `19aff
 | Worker | Worktree / branch | Terminal (handle) | Brief | State |
 |---|---|---|---|---|
 | core | `orca/workspaces/DIGGY 2.O/core` / `core` | `term_dcb55797-9e71-4bfa-b46f-620fb178d026` | `agents/core.md` | **done** — merged to `main` |
-| avatar | `DIGGY 2.O/avatar` / `avatar` | — | `agents/avatar.md` | queued (wave 2) |
-| brain | `DIGGY 2.O/brain` / `brain` | — | `agents/brain.md` | queued (wave 2) |
-| ui | `DIGGY 2.O/ui` / `ui` | — | `agents/ui.md` | queued (wave 2) |
+| avatar | `orca/workspaces/DIGGY 2.O/avatar` / `avatar` | `term_d0795e6e-e881-4d4a-adfc-249fdc8dba31` | `agents/avatar.md` | running (wave 2) |
+| brain | `orca/workspaces/DIGGY 2.O/brain` / `brain` | `term_86cc3e83-e399-4d2c-8a17-044e817e18de` | `agents/brain.md` | running (wave 2) |
+| ui | `orca/workspaces/DIGGY 2.O/ui` / `ui` | `term_518302c6-4319-46bc-b4d5-57f01866d000` | `agents/ui.md` | running (wave 2) |
 | monitor | `DIGGY 2.O/monitor` / `monitor` | — | `agents/monitor.md` | queued (wave 3) |
 | actions | `DIGGY 2.O/actions` / `actions` | — | `agents/actions.md` | queued (wave 3) |
 | forms-vault | `DIGGY 2.O/forms-vault` / `forms-vault` | — | `agents/forms-vault.md` | queued (wave 3) |
@@ -23,8 +23,10 @@ Project: `C:\Users\Ayush\orca\projects\DIGGY 2.O` (base `main`, Phase 0 @ `19aff
 ## Spawn recipe (validated on the core pilot)
 
 1. `orca worktree create --name <name> --base-branch main --json` (or `worker-start --worktree new-child --name <name> --agent command-code`).
-2. `orca terminal create --worktree name:<name> --command "cmdc" --title <name> --json`.
-3. First-ever Command Code launch shows a **language chooser** — send Enter once (now cached globally).
+2. `orca terminal create --worktree name:<name> --command "cmdc --yolo --trust --skip-onboarding" --title <name> --json`.
+   - **Must pass `--yolo --trust`**: a bare `cmdc` prompts for folder trust + every tool ("needs to run powershell"),
+     which stalls a supervised worker. `--yolo` gives "permission bypass on"; `--trust` skips the per-worktree trust gate.
+3. If a bare `cmdc` ever shows a **language chooser** / **"Do you trust the files in this folder?"**, send Enter (one-time).
 4. `orca terminal send --terminal <handle> --text "<spec>" --enter --json` (Command Code cannot report delivery — inspect with `terminal read`).
 
 **Constraint observed:** the core worker's Command Code plan reported *83% used, 12.2 credits left*.
