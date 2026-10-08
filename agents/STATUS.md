@@ -12,10 +12,10 @@ Project: `C:\Users\Ayush\orca\projects\DIGGY 2.O` (base `main`, Phase 0 @ `19aff
 | avatar | `orca/workspaces/DIGGY 2.O/avatar` / `avatar` | `term_d0795e6e-e881-4d4a-adfc-249fdc8dba31` | `agents/avatar.md` | **done** — merged to `main` |
 | brain | `orca/workspaces/DIGGY 2.O/brain` / `brain` | `term_86cc3e83-e399-4d2c-8a17-044e817e18de` | `agents/brain.md` | **done** — merged to `main` |
 | ui | `orca/workspaces/DIGGY 2.O/ui` / `ui` | `term_518302c6-4319-46bc-b4d5-57f01866d000` | `agents/ui.md` | **done** — merged to `main` |
-| monitor | `DIGGY 2.O/monitor` / `monitor` | — | `agents/monitor.md` | queued (wave 3) |
-| actions | `DIGGY 2.O/actions` / `actions` | — | `agents/actions.md` | queued (wave 3) |
-| forms-vault | `DIGGY 2.O/forms-vault` / `forms-vault` | — | `agents/forms-vault.md` | queued (wave 3) |
-| voice | `DIGGY 2.O/voice` / `voice` | — | `agents/voice.md` | queued (wave 3) |
+| monitor | `orca/workspaces/DIGGY 2.O/monitor` / `monitor` | `term_6899c8cc-06dd-4a51-ab5b-9d8fb4ef1703` | `agents/monitor.md` | running (wave 3) |
+| actions | `orca/workspaces/DIGGY 2.O/actions` / `actions` | `term_e92827ea-41d2-450f-a062-3304a8e4f8bf` | `agents/actions.md` | running (wave 3) |
+| forms-vault | `orca/workspaces/DIGGY 2.O/forms-vault` / `forms-vault` | `term_c7e07d17-7c91-49f4-84b6-8340db7331a2` | `agents/forms-vault.md` | running (wave 3) |
+| voice | `orca/workspaces/DIGGY 2.O/voice` / `voice` | `term_3d406e2c-2603-4eb7-b91d-720bebc2df05` | `agents/voice.md` | running (wave 3) |
 | integrations | `DIGGY 2.O/integrations` / `integrations` | — | `agents/integrations.md` | queued (wave 4) |
 | activity | `DIGGY 2.O/activity` / `activity` | — | `agents/activity.md` | queued (wave 4) |
 | qa | `DIGGY 2.O/qa` / `qa` | — | `agents/qa.md` | queued (wave 4) |
