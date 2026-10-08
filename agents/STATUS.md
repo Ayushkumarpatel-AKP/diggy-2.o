@@ -15,10 +15,10 @@ Coordinator: Command Code leader session (Orca). Wave mode: wave-by-wave (Comman
 | monitor | cmdc | `monitor` | **merged** |
 | actions | cmdc | `actions` | **merged** |
 | forms-vault | cmdc | `forms-vault` | **merged** |
-| voice | cmdc | `voice` | **merged (code) — needs core wiring** |
-| integrations | opencode | `integrations` | queued (wave 4) |
-| activity | opencode | `activity` | queued (wave 4) |
-| qa | cmdc | `qa` | queued (wave 4) |
+| voice | cmdc | `voice` | **merged** — wired in `d4b21ef` |
+| integrations | opencode | `integrations` | running (wave 4) |
+| activity | opencode | `activity` | running (wave 4) |
+| qa | cmdc | `qa` | running (wave 4) |
 
 Worktrees live at `C:\Users\Ayush\orca\workspaces\DIGGY 2.O\<name>`.
 
