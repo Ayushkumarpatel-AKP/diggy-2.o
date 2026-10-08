@@ -1,0 +1,25 @@
+{
+  "name": "@diggy/e2e",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Playwright end-to-end suite driving the real built DIGGY extension plus the product's safety gates.",
+  "scripts": {
+    "test": "tsx run.mjs",
+    "test:headed": "tsx run.mjs --headed",
+    "test:gates": "tsx run.mjs --gates",
+    "gate": "node scripts/gate.mjs",
+    "list": "tsx run.mjs --list"
+  },
+  "devDependencies": {
+    "@diggy/forms": "workspace:*",
+    "@diggy/monitor": "workspace:*",
+    "@diggy/page-agent": "workspace:*",
+    "@diggy/policy": "workspace:*",
+    "@diggy/shared": "workspace:*",
+    "esbuild": "^0.25.12",
+    "playwright": "^1.49.0",
+    "playwright-core": "^1.49.0",
+    "tsx": "^4.19.2"
+  }
+}

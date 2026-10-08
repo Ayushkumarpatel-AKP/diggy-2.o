@@ -18,7 +18,7 @@ Coordinator: Command Code leader session (Orca). Wave mode: wave-by-wave (Comman
 | voice | cmdc | `voice` | **merged (code) — needs core wiring** |
 | integrations | opencode | `integrations` | queued (wave 4) |
 | activity | opencode | `activity` | queued (wave 4) |
-| qa | cmdc | `qa` | queued (wave 4) |
+| qa | cmdc | `qa` | **wave 4 — e2e + evals + CI landed (this branch)** |
 
 Worktrees live at `C:\Users\Ayush\orca\workspaces\DIGGY 2.O\<name>`.
 
@@ -83,6 +83,27 @@ makes React resolve to its production build and breaks `@diggy/ui`'s `Dashboard.
    (`--yolo --trust` is mandatory: bare `cmdc` stalls on folder-trust and per-tool approval prompts.)
 3. `orca terminal send --terminal <handle> --text "<spec>" --enter --json` (Command Code cannot report
    delivery — inspect with `orca terminal read`).
+
+## Verification layer (qa, wave 4)
+
+- **`e2e/`** (`@diggy/e2e`) — Playwright harness loading `.output/chrome-mv3` unpacked. Extension
+  loads + side panel/overlay/settings render (browser); **confirm gate** on a real `@diggy/forms`
+  fill over a submit-counting fixture, with a control submit proving the gate is real; injection on a
+  real page; sensitive-site + irreversible-approval policy; monitor baseline→change→dedupe. Runs
+  `tsx run.mjs`; browser tests skip cleanly without a Chromium, the Node gate tests always run.
+- **`evals/`** (`@diggy/evals`) — ported seed eval harness (30 tasks + golden recordings), offline
+  recorded mode + scorer selftest.
+- **`.github/workflows/ci.yml`** — Node 22.13 + pnpm 9.15.9 + `NODE_ENV=development` →
+  typecheck + test + build + extension build + evals + Playwright e2e.
+- **`e2e/scripts/gate.mjs`** — per-phase gates (PLAN.md phases 0–4), each ending in the core gate.
+- **`e2e/REVIEW_CHECKLIST.md`** — merge review checklist applied to every `worker_done`.
+
+Gates on this branch: `pnpm -w typecheck` 21 ✅ · `pnpm -w test` 21 ✅ (e2e 9/9, evals 30/30 + selftest)
+· `pnpm -w build` 13 ✅ · `pnpm --filter @diggy/extension build` ✅ · `pnpm --filter @diggy/e2e test` 9/9 ✅.
+
+Note: two workspace globs were added to `pnpm-workspace.yaml` (`e2e`, `evals`) so the acceptance
+commands `pnpm --filter @diggy/e2e test` / `pnpm --filter @diggy/evals test` resolve; the lockfile was
+regenerated with `NODE_ENV=development pnpm install`. Integration edit — leader to confirm.
 
 ## Merge notes
 

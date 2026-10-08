@@ -1,0 +1,69 @@
+name: CI
+
+# Mirrors the local gates exactly: Node 22 + pnpm 9.15 with NODE_ENV=development,
+# then typecheck → test → build, the MV3 extension build, the agent evals, and the
+# Playwright e2e suite against the built extension.
+#
+# NODE_ENV is forced to `development` at the job level: this project is developed
+# on a machine that exports `production`, which makes pnpm skip devDependencies.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_ENV: development
+  CI: "true"
+
+jobs:
+  verify:
+    name: verify (node 22, pnpm 9.15)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm -w typecheck
+
+      - name: Unit tests
+        run: pnpm -w test
+
+      - name: Build
+        run: pnpm -w build
+
+      - name: Build MV3 extension
+        run: pnpm --filter @diggy/extension build
+
+      - name: Agent evals (recorded)
+        run: pnpm --filter @diggy/evals test
+
+      # The e2e suite drives the built extension in a real Chromium. Downloading the
+      # browser is best-effort: if it fails, the browser tests skip cleanly and the
+      # job stays green, while every Node gate test still runs.
+      - name: Install Playwright Chromium
+        continue-on-error: true
+        run: pnpm --filter @diggy/e2e exec playwright install --with-deps chromium
+
+      - name: E2E (real extension + product gates)
+        run: pnpm --filter @diggy/e2e test
