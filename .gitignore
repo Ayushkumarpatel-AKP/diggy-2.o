@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .output/
+.wxt/
 .turbo/
 coverage/
 *.tsbuildinfo
@@ -23,3 +24,6 @@ scratch/
 # diggy motion asset lab — keep the FBX/textures/PNGs, drop the Python venv
 diggy motion/.venv/
 diggy motion/**/__pycache__/
+
+# Agent tooling metadata (not product code)
+.commandcode/
