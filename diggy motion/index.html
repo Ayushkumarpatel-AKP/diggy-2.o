@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DIGGY MOTION FRAME</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">D</span>
+          <div>
+            <p class="eyebrow">MOTION FRAME</p>
+            <h1>CHIORI // AVATAR LAB</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <span id="load-status" class="status-pill">LOADING AVATAR</span>
+          <button id="export-video" class="button button-accent">EXPORT WEBM</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="stage-panel panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">LIVE VIEWPORT</p>
+              <h2>YOUR CHIORI, IN MOTION</h2>
+            </div>
+            <div class="viewport-tools">
+              <button id="reset-camera" class="icon-button" title="Reset camera">RESET CAM</button>
+              <button id="toggle-grid" class="icon-button is-active" title="Toggle grid">GRID</button>
+              <button id="load-chiori" class="icon-button" title="Load Chiori FBX">CHIORI FBX</button>
+              <button id="play-walking" class="icon-button" title="Load and play Walking FBX">WALK FBX</button>
+            </div>
+          </div>
+          <div id="viewport" class="viewport">
+            <div class="viewport-overlay">
+              <span>CAM 01</span>
+              <span id="fps-label">24 FPS</span>
+            </div>
+            <div id="loading-message" class="loading-message">READING CHIORI.FBX</div>
+          </div>
+          <div class="transport">
+            <button id="play-toggle" class="transport-button" aria-label="Play animation">PLAY</button>
+            <button id="stop-button" class="transport-button" aria-label="Stop animation">STOP</button>
+            <div class="time-readout"><span id="current-time">00:00.00</span> / <span id="total-time">00:04.00</span></div>
+            <input id="timeline" class="timeline" type="range" min="0" max="4" step="0.01" value="0" aria-label="Animation timeline" />
+            <select id="fps-select" class="select compact-select" aria-label="Frame rate">
+              <option value="24">24 FPS</option>
+              <option value="30">30 FPS</option>
+              <option value="60">60 FPS</option>
+            </select>
+          </div>
+        </section>
+
+        <aside class="controls-column">
+          <section class="panel control-panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">MOTION LIBRARY</p>
+                <h2>DROP A MOVE</h2>
+              </div>
+              <span class="count-label" id="motion-count">07 UPLOADS</span>
+            </div>
+            <div id="motion-list" class="motion-list"></div>
+            <p class="timeline-tip">Only uploaded animation files appear here.</p>
+          </section>
+
+          <section class="panel control-panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">SELECTED MOVE</p>
+                <h2 id="selected-motion-name">IDLE LOOP</h2>
+              </div>
+              <span id="selected-motion-duration" class="count-label">4.0 SEC</span>
+            </div>
+            <div class="slider-field">
+              <div class="field-label"><span>ENERGY</span><output id="energy-output">70%</output></div>
+              <input id="energy-slider" type="range" min="0" max="100" value="70" />
+            </div>
+            <div class="slider-field">
+              <div class="field-label"><span>SPEED</span><output id="speed-output">100%</output></div>
+              <input id="speed-slider" type="range" min="25" max="200" value="100" />
+            </div>
+            <div class="button-row">
+              <button id="mirror-toggle" class="button button-outline">MIRROR: OFF</button>
+              <button id="download-motion" class="button button-accent">DOWNLOAD MOTION</button>
+            </div>
+            <div class="lighting-controls">
+              <div class="hand-controls-heading">
+                <span class="eyebrow">LIGHTING + COLOR</span>
+              </div>
+              <label class="color-field">LIGHT COLOR<input id="light-color" type="color" value="#ffffff" /></label>
+              <label class="slider-field">LIGHT INTENSITY<output id="light-intensity-output">1.6x</output><input id="light-intensity" type="range" min="0" max="3" step="0.1" value="1.6" /></label>
+            </div>
+          </section>
+        </aside>
+      </main>
+
+      <section class="panel timeline-panel">
+        <div class="panel-heading compact">
+          <div>
+            <p class="eyebrow">MOTION STACK</p>
+            <h2>SEQUENCE TIMELINE</h2>
+          </div>
+          <button id="clear-sequence" class="text-button">CLEAR SEQUENCE</button>
+        </div>
+        <div id="sequence" class="sequence"></div>
+        <div class="timeline-tip"><span class="tip-dot"></span> Select a move above, then use the playhead to tune the pose.</div>
+      </section>
+    </div>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+          "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.3.0/lib/three-vrm.module.js"
+        }
+      }
+    </script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

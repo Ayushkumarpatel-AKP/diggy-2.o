@@ -1,0 +1,25 @@
+node_modules/
+dist/
+.output/
+.turbo/
+coverage/
+*.tsbuildinfo
+
+.env
+.env.*
+!.env.example
+
+# Orca per-worktree agent config is environment-specific, not product code
+opencode.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+
+# Local scratch
+scratch/
+
+# diggy motion asset lab — keep the FBX/textures/PNGs, drop the Python venv
+diggy motion/.venv/
+diggy motion/**/__pycache__/
