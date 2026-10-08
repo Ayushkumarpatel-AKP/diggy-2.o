@@ -13,7 +13,7 @@ Project: `C:\Users\Ayush\orca\projects\DIGGY 2.O` (base `main`, Phase 0 @ `19aff
 | brain | `orca/workspaces/DIGGY 2.O/brain` / `brain` | `term_86cc3e83-e399-4d2c-8a17-044e817e18de` | `agents/brain.md` | **done** — merged to `main` |
 | ui | `orca/workspaces/DIGGY 2.O/ui` / `ui` | `term_518302c6-4319-46bc-b4d5-57f01866d000` | `agents/ui.md` | **done** — merged to `main` |
 | monitor | `DIGGY 2.O/monitor` / `monitor` | — | `agents/monitor.md` | queued (wave 3) |
-| actions | `DIGGY 2.O/actions` / `actions` | — | `agents/actions.md` | queued (wave 3) |
+| actions | `DIGGY 2.O/actions` / `actions` | — | `agents/actions.md` | **done** (branch `actions`) |
 | forms-vault | `DIGGY 2.O/forms-vault` / `forms-vault` | — | `agents/forms-vault.md` | queued (wave 3) |
 | voice | `DIGGY 2.O/voice` / `voice` | — | `agents/voice.md` | queued (wave 3) |
 | integrations | `DIGGY 2.O/integrations` / `integrations` | — | `agents/integrations.md` | queued (wave 4) |
@@ -150,3 +150,51 @@ orca terminal read --terminal <handle> --limit 45 --json
 - **Not done / follow-ups** — pixel-level screenshot diff vs the theme PNG (agent-browser not
   installed on this host; SSR + jsdom mount used as the automated substitute). Home hero and Assistant
   use the golden-D mark where the FBX renderer mounts (`// TEMP STUB — blocked on avatar`).
+
+### actions (branch `actions`) — ✅ done
+
+- **Scope touched**: `packages/page-agent/**`, `packages/policy/**`, `agents/STATUS.md`,
+  `pnpm-lock.yaml` (new importers). Nothing else.
+- **New package `@diggy/policy`** — ported from the seed (`projects/diggy`), dependency-free:
+  `types / classify / decide / taint / sites / quarantine / untrusted / vault`. 53 tests (all 8 seed
+  test files ported). Policy matrix in `packages/policy/README.md`.
+- **New package `@diggy/page-agent`** — ported act layer + the new Action Engine:
+  1. **Act layer** — `dom`, `controls`, `snapshot`, `ref-registry`, `agent` (8 actions), `policy-gate`,
+     `input-adapter` (`TrustedInputAdapter` is a *documented stub*; `NullInputAdapter` is the default).
+  2. **`a11y-snapshot.ts`** — accessibility-tree snapshot (webbrain-style role+name, nested, capped at
+     `MAX_A11Y_NODES`), refs shared with the act layer.
+  3. **`tool-registry.ts`** — browser-use-style `ToolRegistry`; each tool has `description` + returns
+     the shared `ActionResult` (`ok`/`extractedContent`/`data`/`error`); `describe()` for prompts.
+  4. **`plan.ts`** — plan-before-act: `buildPlan` (never emits a submit/irreversible step),
+     `runPlan` re-checks every step; irreversible/`confirm` needs approval; submit steps refused even
+     when approved.
+  5. **`playbook.ts`** — `PlaybookRecorder` → value-free reusable workflow (typed text/URLs/queries →
+     `{{…}}`, refs dropped, vault values scrubbed); `replayPlaybook`.
+  6. **`action-api.ts`** — `createActionAPI()` implements the shared `ActionAPI`
+     (`snapshot/read/click/type/navigate/extract/fill/plan/execute`) + `tools`/`a11y()`/recording.
+  7. **`host.ts`** — content-script host (`createActionHost`/`createActionListener`, `diggy:action`).
+- **Acceptance evidence** (page-agent, 79 tests):
+  - *Irreversible requires approval* — `plan.test.ts`: `runPlan` on a `fillForm {submit:true}` step →
+    `awaiting-approval`, tool not invoked; with `approve` → `completed`.
+  - *Injection ignored + flagged* — `injection.test.ts`: reading the fixture flags
+    `ignore-instructions`/`destroy-everything`/`exfiltrate`, returns a `wrapUntrusted` fence; the
+    destructive control is refused and the benign write confirms (tainted); the plan stays submit-free.
+  - *No plan contains a submit step* — `plan.test.ts`: `planIsSubmitFree` holds for 7 goals incl.
+    "submit the form" / "delete my account" / "place the order and pay".
+  - *Never auto-submit* — `policy.test.ts` (a submit click is `confirm` and not executed even with
+    `{ approved: true }`), plus `tool-registry`/`action-api`.
+- **Gates** (exact commands + results, all on branch `actions`):
+  - `set NODE_ENV=development && pnpm install` → 9 workspace projects, exit 0.
+  - `pnpm -w typecheck` → **11 tasks successful** (all 8 packages).
+  - `pnpm -w test` → **9 tasks successful**; policy **53**, page-agent **79** (workspace total 247).
+  - `pnpm -w build` → **8 tasks successful**; both packages emit `dist` (policy 36 files, page-agent
+    68 files); extension + demo still build.
+- **Blocked / follow-up (owner: core)**: the brief's item 6 "wire `ActionAPI` from the extension". The
+  host glue is implemented in-scope (`packages/page-agent/src/host.ts`, mirroring the seed's
+  `policy-host.ts`/`agent-host.ts` pattern), but adding `"@diggy/page-agent"` / `"@diggy/policy"` to
+  `apps/extension/package.json` and registering `createActionListener` on `runtime.onMessage` is
+  **outside my ownership** (apps/extension is core's). The one-line registration is documented in the
+  INTERFACE block at the top of `host.ts`.
+- **Contract notes**: `PolicyDecision`/`PolicyVerdict`/`ActionAPI`/`ActionResult`/`Plan` come from
+  `@diggy/shared` `contracts/action.ts`; the seed's `AvatarMood`/`AvatarState` mapping was dropped
+  (the worktree's avatar contract differs and it is out of this brief's deliverables).
