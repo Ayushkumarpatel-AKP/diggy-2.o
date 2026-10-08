@@ -16,7 +16,7 @@ Coordinator: Command Code leader session (Orca). Wave mode: wave-by-wave (Comman
 | actions | cmdc | `actions` | **merged** |
 | forms-vault | cmdc | `forms-vault` | **merged** |
 | voice | cmdc | `voice` | **merged (code) — needs core wiring** |
-| integrations | opencode | `integrations` | queued (wave 4) |
+| integrations | opencode | `integrations` | **done** — ready to merge (see Integrations wave below) |
 | activity | opencode | `activity` | queued (wave 4) |
 | qa | cmdc | `qa` | queued (wave 4) |
 
@@ -75,6 +75,44 @@ makes React resolve to its production build and breaks `@diggy/ui`'s `Dashboard.
 6. **Capability report** ships 8 clip FBX (+ `Chiori.fbx` = 9 FBX); the brief's "9 clips" was off by one.
 7. **Not browser-verified**: FBX render (no headless WebGL), no pixel diff vs the theme PNG, and the
    CTRL+SPACE round-trip (needs follow-up 1). jsdom + SSR mount used as the automated substitute.
+
+## Integrations wave (worker `integrations`, branch `integrations`)
+
+Delivered 2026-10-08. All gates green with `NODE_ENV=development`:
+`pnpm -w typecheck` 22 tasks ✅ · `pnpm -w test` (api: 67 tests / 8 files;
+crawler: 100 still green) ✅ · `pnpm -w build` 15 tasks ✅ ·
+`pnpm --filter @diggy/extension build` ✅ (chrome-mv3, 490 kB).
+
+- **`@diggy/service-auth`** (new Node-only `packages/service-auth`): per-install
+  token + Host/Origin/JSON guard promoted out of
+  `services/crawler/src/service-auth.ts` (now a re-export shim).
+  Deliberately NOT in `@diggy/shared` — shared is browser-safe/bundled, this
+  needs `node:crypto`/`node:fs`. Crawler + api both import `@diggy/service-auth`.
+- **`@diggy/api`** (new `services/api`, Fastify + SQLite): ported
+  `config/crypto/db/oauth/providers/server/main` + `routes/{auth,plugins,actions,preview}`;
+  OAuth tokens encrypted at rest (AES-256-GCM); routes fixed to use their own
+  `AppContext` creds instead of the ambient singleton. Everything also served
+  under `/api` (`/api/plugins`, `/api/auth` responds, `/api/health`).
+- **Calendar**: read/write via Google + `.ics` export (`src/ics.ts` RFC 5545
+  builder, `calendar.export` action, `GET /calendar/export` download).
+- **Student pack** (SIH, LeetCode, Codeforces, hackathons, scholarships) +
+  **Creator pack** (YouTube Studio, LinkedIn, X, Reddit): link-only, `GET /packs`.
+- **Connector registry** (`src/connectors.ts`, `GET /connectors`): pluggable,
+  seeded from providers + packs + crawler; `registerConnector` throws on dup.
+- **MCP delegation** (`src/mcp.ts`, `/mcp/*`): `handshake` (Bearer→`x-mcp-token`,
+  1h HMAC) → `delegate` (10 task-level tools only, raw primitives rejected) →
+  poll/complete; per-user isolation.
+- **Extension** (`apps/extension/src/`): `google.ts` (PKCE fallback), `gmail-session.ts`
+  (Atom feed), `ics.ts` (ICS parse), `accounts.ts` (smart fallbacks; reads
+  `diggy:settings` defensively — no core-owned import), `api-client.ts`
+  (pairing handshake, plugins, packs/connectors, `runAction`).
+- Live providers: google/notion/github (OAuth, needs server env creds),
+  youtube (no-auth). SIH/LeetCode/Codeforces/hackathons/scholarships/LinkedIn/X/Reddit
+  link-only by design.
+- Acceptance evidence: `test/oauth-callback.test.ts` (ciphertext≠plaintext,
+  decrypts back, `/api/plugins` shows connected); `test/ics.test.ts` (valid
+  VCALENDAR); live smoke: `/health` 200, `/api/auth` 200, `/api/plugins` 401
+  without session.
 
 ## Spawn recipe (validated)
 

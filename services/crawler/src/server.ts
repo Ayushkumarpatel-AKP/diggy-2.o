@@ -6,7 +6,7 @@ import { monitorStatus } from "./monitor-scheduler.js";
 import { listProviders, resolveProvider } from "./providers/index.js";
 import { fetchFeed, fetchTranscript, probeReach, reachProviderSummary } from "./providers/reach.js";
 import { isNetworkDisabled, searchWeb } from "./search.js";
-import { evaluateRequest } from "./service-auth.js";
+import { evaluateRequest } from "@diggy/service-auth";
 import { MAX_RESPONSE_BYTES, TOTAL_TIMEOUT_MS, checkUrl } from "./ssrf.js";
 
 const HOST = "127.0.0.1";
