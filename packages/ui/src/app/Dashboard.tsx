@@ -40,9 +40,34 @@ export interface DashboardProps {
   user?: { initials: string; name?: string; role?: string };
   statusApi?: Pick<AvatarAPI, "status">;
   onSettings?: () => void;
+  /** Forwarded to the extension runtime so the buttons actually do the work. */
+  onAction?: (intent: ActionIntent) => void;
 }
 
-export function Dashboard({ tab, onTabChange, user, statusApi, onSettings }: DashboardProps) {
+/** High-level intents the dashboard forwards to the extension runtime. */
+export type ActionIntent =
+  | "summarize"
+  | "explain"
+  | "extract"
+  | "repository"
+  | "opportunities"
+  | "track"
+  | "voice";
+
+/** Map a button's label onto a runtime intent (`null` = local-only feedback). */
+export function intentForLabel(label: string): ActionIntent | null {
+  const value = label.toLowerCase();
+  if (value.includes("summar")) return "summarize";
+  if (value.includes("explain")) return "explain";
+  if (value.includes("extract")) return "extract";
+  if (value.includes("repositor")) return "repository";
+  if (value.includes("opportunit")) return "opportunities";
+  if (value.includes("track")) return "track";
+  if (value.includes("voice") || value.includes("mic")) return "voice";
+  return null;
+}
+
+export function Dashboard({ tab, onTabChange, user, statusApi, onSettings, onAction }: DashboardProps) {
   const [internalTab, setInternalTab] = useState<NavTabId>("home");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const activeTab = tab ?? internalTab;
@@ -59,9 +84,15 @@ export function Dashboard({ tab, onTabChange, user, statusApi, onSettings }: Das
 
   const handleCommand = useCallback(
     (label: string, intent?: string) => {
+      // Real work goes to the runtime; everything else is a local acknowledgement.
+      const action = intentForLabel(intent ?? label);
+      if (action && onAction) {
+        onAction(action);
+        return;
+      }
       status.push({ text: intent ? `${label} · ${intent}` : label, priority: 1, mood: "thinking" });
     },
-    [status],
+    [status, onAction],
   );
 
   useHotkey("alt+k", () => setPaletteOpen((open) => !open));
@@ -123,6 +154,26 @@ export function Dashboard({ tab, onTabChange, user, statusApi, onSettings }: Das
         />
 
         <main className="dg-main">
+          {/* Narrow surfaces (a real browser side panel) hide the sidebar, so the
+              section switcher becomes a scrollable tab strip instead. */}
+          <nav className="dg-tabbar" aria-label="Sections">
+            {NAV_TABS.map((item) => {
+              const isActive = item.id === activeTab;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={isActive ? "dg-tab dg-tab--active" : "dg-tab"}
+                  aria-current={isActive ? "page" : undefined}
+                  onClick={() => selectTab(item.id)}
+                >
+                  <Icon name={item.icon as IconName} size={15} />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+
           <div className="dg-content">
             {activeTab === "home" ? (
               <HomeScreen

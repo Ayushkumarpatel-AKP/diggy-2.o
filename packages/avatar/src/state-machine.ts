@@ -373,6 +373,14 @@ export class AvatarStateMachine {
     return this._transitionTo(state, clamped * 1000, false);
   }
 
+  /**
+   * Force a state, bypassing the priority ladder — for scripted sequences (the
+   * walk-in → stretch → greeting entrance) where the director chooses the order.
+   */
+  force(state: AvatarState): boolean {
+    return this._transitionTo(state, STATE_PROFILES[state].crossFade * 1000, true);
+  }
+
   /** Advance the auto-return timer. Call once per frame with the frame delta (s). */
   update(delta: number): void {
     if (!Number.isFinite(delta) || delta <= 0) return;

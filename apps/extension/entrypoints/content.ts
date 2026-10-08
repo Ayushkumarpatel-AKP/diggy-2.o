@@ -63,13 +63,22 @@ export default defineContentScript({
     const avatarProps: AvatarProps = {
       assetBase: resolveUrl("assets/avatar"),
       size: 140,
-      corner: "bottom-right",
+      corner: "bottom-left",
       fps: 24,
     };
     const root = createRoot(mount);
     root.render(createElement(Avatar, { ...avatarProps, ref: handleRef }));
 
-    const onMessage = (raw: unknown): undefined => {
+    const onMessage = (raw: unknown): unknown => {
+      const message = raw as { type?: string } | undefined;
+
+      // Page reading for the runtime. We are already in the page, so this needs
+      // no host permission — unlike `chrome.scripting.executeScript`.
+      if (message?.type === "diggy:read") {
+        const text = (document.body?.innerText ?? "").replace(/\s+/g, " ").trim().slice(0, 6000);
+        return Promise.resolve({ text, url: location.href, title: document.title });
+      }
+
       if (!isAvatarMessage(raw)) return undefined;
       const avatar = handleRef.current;
       if (!avatar) return undefined;

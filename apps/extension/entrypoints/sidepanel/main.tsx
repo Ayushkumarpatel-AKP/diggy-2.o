@@ -1,10 +1,9 @@
 /**
  * Side panel entrypoint — the real 7-tab DIGGY dashboard.
  *
- * NOTE: `apps/extension/package.json` is core-owned, so this entrypoint reaches the UI
- * package by relative path instead of a workspace dependency. When core next touches the
- * manifest, adding `"@diggy/ui": "workspace:*"` lets this become
- * `import { Dashboard } from "@diggy/ui"` with no other change.
+ * The dashboard is presentational; every action a button triggers is forwarded
+ * to the extension runtime (`diggy:action`), which owns the page reading, the
+ * model call and the spoken reply.
  */
 import { createRoot } from "react-dom/client";
 
@@ -13,7 +12,16 @@ import "../../../../packages/ui/src/styles.css";
 import "../../assets/app.css";
 
 function SidePanel() {
-  return <Dashboard />;
+  return (
+    <Dashboard
+      onSettings={() => {
+        void browser.runtime.openOptionsPage();
+      }}
+      onAction={(intent) => {
+        void browser.runtime.sendMessage({ type: "diggy:action", intent }).catch(() => undefined);
+      }}
+    />
+  );
 }
 
 const container = document.getElementById("root");

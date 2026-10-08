@@ -83,6 +83,11 @@ export class AvatarController implements AvatarAPI {
     if (this._machine.play(state)) this._patch({ state });
   }
 
+  /** Force a state, bypassing the priority ladder (scripted entrance sequences). */
+  playNow(state: AvatarState): void {
+    if (this._machine.force(state)) this._patch({ state });
+  }
+
   say(text: string, mood: AvatarState = "speaking"): void {
     this._patch({ status: text });
     this.play(mood);

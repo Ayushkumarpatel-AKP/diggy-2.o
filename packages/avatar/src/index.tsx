@@ -38,7 +38,7 @@
  * snapshots via `subscribe` / `getSnapshot`.
  * ============================================================================
  */
-import { Component, Suspense, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useSyncExternalStore } from "react";
+import { Component, Suspense, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { AvatarAPI, AvatarCapabilityReport, AvatarState } from "@diggy/shared";
@@ -81,12 +81,14 @@ export interface AvatarProps {
   vrmUrl?: string;
   /** Target frame rate (brief: ≤30). Defaults to 30. */
   fps?: number;
-  /** Screen corner to pin to. Defaults to `bottom-right`. */
+  /** Screen corner to pin to. Defaults to `bottom-left`. */
   corner?: AvatarCorner;
   /** Rendered width in CSS pixels. Defaults to 200. */
   size?: number;
   /** Play the greeting (`entry`) once on mount. Defaults to true. */
   intro?: boolean;
+  /** Walk in from the edge, then stretch and greet. Defaults to true. */
+  walkIn?: boolean;
   /** Idle ambience: play `stretch` this often (ms). 0 disables. Defaults to 45000. */
   stretchEveryMs?: number;
   /** External controller to drive; one is created internally otherwise. */
@@ -142,6 +144,11 @@ const CORNER_OFFSET = 16;
 const CAMERA_TARGET_Y = 1.15;
 const CAMERA_DISTANCE = 4.6;
 
+/** Entrance timing: walk in → turn + stretch → greet → settle into idle. */
+const WALK_IN_MS = 1500;
+const STRETCH_MS = 2600;
+const GREET_MS = 3000;
+
 function verticalEdge(corner: AvatarCorner, offset: number): CSSProperties {
   return corner.includes("top") ? { top: offset } : { bottom: offset };
 }
@@ -162,9 +169,10 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
     assetBase = "/assets/avatar",
     vrmUrl,
     fps = 30,
-    corner = "bottom-right",
+    corner = "bottom-left",
     size = 200,
     intro = true,
+    walkIn = true,
     stretchEveryMs = 45_000,
     controller,
     onCapability,
@@ -184,22 +192,52 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
     onModeChange?.(snapshot.mode, snapshot.fallbackReason);
   }, [snapshot.mode, snapshot.fallbackReason, onModeChange]);
 
-  // Greet exactly once — ideally the moment the renderer reports it is ready,
-  // so the greeting clip is actually loaded when it plays.
-  const greetedRef = useRef(false);
-  const greetOnce = useCallback(() => {
-    if (greetedRef.current) return;
-    greetedRef.current = true;
-    active.play("entry");
-  }, [active]);
+  // The entrance is scripted: walk in from the edge, turn to face the viewer,
+  // stretch, greet, then settle into the idle loop. It runs once the renderer
+  // reports ready, so every clip is loaded when it plays.
+  const [walking, setWalking] = useState(walkIn);
+  const introRef = useRef(false);
+  const timersRef = useRef<number[]>([]);
+
+  const runIntro = useCallback(() => {
+    if (introRef.current) return;
+    introRef.current = true;
+
+    if (!walkIn) {
+      if (intro) active.playNow("entry");
+      return;
+    }
+
+    const at = (ms: number, run: () => void): void => {
+      timersRef.current.push(window.setTimeout(run, ms));
+    };
+
+    active.playNow("walk");
+    at(WALK_IN_MS, () => {
+      setWalking(false);
+      active.playNow("stretch");
+    });
+    at(WALK_IN_MS + STRETCH_MS, () => {
+      if (intro) active.playNow("entry");
+    });
+    at(WALK_IN_MS + STRETCH_MS + GREET_MS, () => active.playNow("idle"));
+  }, [active, intro, walkIn]);
+
+  useEffect(
+    () => () => {
+      for (const id of timersRef.current) window.clearTimeout(id);
+      timersRef.current = [];
+    },
+    [],
+  );
 
   const handleCapability = useCallback(
     (report: AvatarCapabilityReport) => {
       active.setCapability(report);
       onCapability?.(report);
-      greetOnce();
+      runIntro();
     },
-    [active, onCapability, greetOnce],
+    [active, onCapability, runIntro],
   );
 
   const handleFbxError = useCallback(
@@ -209,14 +247,13 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
     [active],
   );
 
-  // Lifecycle: greet once the renderer is ready, then settle into idle (the
-  // machine auto-returns from `entry`). The timeout is a safety net for a
-  // renderer that never reports capability.
+  // Lifecycle: run the entrance once the renderer is ready. The timeout is a
+  // safety net for a renderer that never reports capability.
   useEffect(() => {
     if (!intro) return;
-    const timer = window.setTimeout(greetOnce, 6000);
+    const timer = window.setTimeout(runIntro, 6000);
     return () => window.clearTimeout(timer);
-  }, [intro, greetOnce]);
+  }, [intro, runIntro]);
 
   // Idle ambience: stretch every so often, but only while genuinely idle.
   useEffect(() => {
@@ -246,6 +283,13 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
   if (!snapshot.visible) return null;
 
   const boxHeight = Math.round(size * 1.5);
+  // Off-screen start for the walk-in; the CSS transition slides her into the corner.
+  const approach = Math.round(size * 1.9);
+  const horizontal: CSSProperties = walking
+    ? corner.includes("right")
+      ? { right: -approach }
+      : { left: -approach }
+    : horizontalEdge(corner, CORNER_OFFSET);
 
   return (
     <div
@@ -254,7 +298,9 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
         zIndex: 2147483000,
         pointerEvents: "none",
         ...verticalEdge(corner, CORNER_OFFSET),
-        ...horizontalEdge(corner, CORNER_OFFSET),
+        ...horizontal,
+        transition:
+          "left 1.5s cubic-bezier(0.22, 1, 0.36, 1), right 1.5s cubic-bezier(0.22, 1, 0.36, 1)",
       }}
       aria-hidden
       data-diggy-avatar-root=""

@@ -172,6 +172,107 @@ async function respond(transcript: string): Promise<void> {
   bus.emit(BusEvents.AvatarStatus, { text: "" });
 }
 
+/* --- dashboard actions --------------------------------------------------- */
+
+/** Page content, read through the content script (already injected, no host permission). */
+async function readPage(): Promise<{ text: string; url: string; title: string } | null> {
+  try {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id == null) return null;
+    const page = (await browser.tabs.sendMessage(tab.id, { type: "diggy:read" })) as
+      | { text: string; url: string; title: string }
+      | undefined;
+    return page ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const ASSIST_PROMPTS: Record<string, string> = {
+  summarize: "Summarise this page in three to five short sentences.",
+  explain: "Explain what this page is about, in plain language.",
+  extract: "Extract the most important facts, dates and numbers from this page.",
+  repository: "Analyse this repository page: what it is, its stack, and how active it looks.",
+  opportunities: "List any deadlines, eligibility rules or opportunities on this page.",
+};
+
+async function speak(text: string): Promise<void> {
+  await ensureOffscreen();
+  await browser.runtime.sendMessage({ type: OFFSCREEN.say, text }).catch(() => undefined);
+  await toTab({ action: "say", text });
+}
+
+/** Read the current page and answer a fixed question about it. */
+async function assist(intent: string): Promise<void> {
+  const keys = await readKeys();
+  if (!keys.groq && !keys.nvidia) {
+    await toTab({ action: "status", text: "Add your Groq API key in DIGGY settings." });
+    return;
+  }
+
+  bus.emit(BusEvents.AvatarStatus, { text: VOICE_STATUS.thinking });
+  const page = await readPage();
+  const question = ASSIST_PROMPTS[intent] ?? "Help me with this page.";
+  const context = page ? `Page: ${page.title} — ${page.url}\n\n${page.text}` : "(No page content.)";
+
+  let reply: string;
+  try {
+    const registry = createBrainRegistry({
+      providers: {
+        groq: keys.groq ? { apiKey: keys.groq } : {},
+        "nvidia-nim": keys.nvidia ? { apiKey: keys.nvidia } : {},
+      },
+    });
+    const result = await registry.chat({
+      messages: [
+        { role: "system", content: PERSONA },
+        { role: "user", content: `${question}\n\n${context}` },
+      ],
+      temperature: 0.3,
+      maxTokens: 420,
+    });
+    reply = result.text.trim() || "I could not read that page.";
+  } catch (error) {
+    reply = `Sorry, I could not reach the model. ${error instanceof Error ? error.message : ""}`.trim();
+  }
+
+  bus.emit(BusEvents.AvatarStatus, { text: VOICE_STATUS.speaking });
+  await speak(reply);
+  bus.emit(BusEvents.AvatarStatus, { text: "" });
+}
+
+/** Remember the current page as something to watch. */
+async function track(): Promise<void> {
+  const page = await readPage();
+  if (!page) {
+    await toTab({ action: "status", text: "Open a page first, then track it." });
+    return;
+  }
+  try {
+    const stored = await browser.storage.local.get("diggy:watches");
+    const watches = (stored["diggy:watches"] as unknown[] | undefined) ?? [];
+    watches.unshift({ url: page.url, title: page.title, addedAt: Date.now() });
+    await browser.storage.local.set({ "diggy:watches": watches.slice(0, 50) });
+  } catch {
+    // Storage unavailable — the acknowledgement below still tells the user.
+  }
+  await toTab({ action: "status", text: `Tracking: ${page.title || page.url}` });
+}
+
+/** A button in the side panel asked for something. */
+async function handleAction(intent: string | undefined): Promise<void> {
+  if (!intent) return;
+  if (intent === "voice") {
+    await voice.toggle();
+    return;
+  }
+  if (intent === "track") {
+    await track();
+    return;
+  }
+  await assist(intent);
+}
+
 export default defineBackground(() => {
   bus.emit(BusEvents.AvatarStatus, { text: "DIGGY is ready" });
 
@@ -190,10 +291,14 @@ export default defineBackground(() => {
   });
 
   // The offscreen recorder asks to stop on silence / cap; the session transcribes.
+  // The side panel asks for page work with `diggy:action`.
   browser.runtime.onMessage.addListener((raw: unknown) => {
-    const message = raw as { type?: string } | undefined;
+    const message = raw as { type?: string; intent?: string } | undefined;
     if (message?.type === OFFSCREEN.silence) {
       void voice.onSilence("silence");
+    }
+    if (message?.type === "diggy:action") {
+      void handleAction(message.intent);
     }
     return undefined;
   });
