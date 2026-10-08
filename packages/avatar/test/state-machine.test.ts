@@ -27,12 +27,15 @@ const CONTRACT_STATES: AvatarState[] = [
   "warning",
   "sleep",
   "celebration",
+  "entry",
+  "stretch",
+  "exit",
 ];
 
-describe("the 12-state machine", () => {
-  it("declares exactly the 12 contract states", () => {
-    expect(AVATAR_STATES).toHaveLength(12);
-    expect(new Set(AVATAR_STATES).size).toBe(12);
+describe("the avatar state machine", () => {
+  it("declares exactly the contract states", () => {
+    expect(AVATAR_STATES).toHaveLength(15);
+    expect(new Set(AVATAR_STATES).size).toBe(15);
     expect([...AVATAR_STATES].sort()).toEqual([...CONTRACT_STATES].sort());
   });
 

@@ -1,15 +1,49 @@
-import { BusEvents, createBus, type Provider } from "@diggy/shared";
-import { createTranscriber, OFFSCREEN, VoiceSession, type VoiceRecorder } from "@diggy/voice";
+import { BusEvents, createBus } from "@diggy/shared";
+import { createBrainRegistry, createGroqProvider } from "@diggy/core";
+import {
+  createTranscriber,
+  OFFSCREEN,
+  VoiceSession,
+  VOICE_STATUS,
+  type VoiceRecorder,
+} from "@diggy/voice";
 
 import { bindPushToTalk, type CommandsApi, type RuntimeMessageApi } from "../src/shortcut.js";
 
 /**
  * Extension background service worker.
- * Owns the shared plumbing (bus bootstrap, side panel, storage warm-up) and the
- * push-to-talk voice wiring: the mic lives in the offscreen document, and STT is
- * delegated to the backend so no provider key ever enters the bundle.
+ *
+ * Owns the shared plumbing (bus, side panel, storage) and the push-to-talk voice
+ * pipeline: the mic lives in the offscreen document, STT + chat go through
+ * `@diggy/core` (Groq primary → NVIDIA NIM failover) using the user's own key
+ * from storage, and replies are spoken by the offscreen browser voice and shown
+ * by the on-page avatar.
  */
 const bus = createBus({ source: "background" });
+
+/** Where the user's own provider keys live (set in DIGGY settings). */
+export const PROVIDER_KEYS_STORAGE = "diggy:providers";
+
+interface ProviderKeys {
+  groq?: string;
+  nvidia?: string;
+}
+
+async function readKeys(): Promise<ProviderKeys> {
+  try {
+    const stored = await browser.storage.local.get(PROVIDER_KEYS_STORAGE);
+    return (stored[PROVIDER_KEYS_STORAGE] as ProviderKeys | undefined) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/** The companion's voice: short, plain, spoken out loud. */
+const PERSONA = [
+  "You are DIGGY, a friendly browser companion that lives in the corner of the page.",
+  "Answer the user's spoken question conversationally and briefly: one or two short sentences,",
+  "plain language, no markdown, no lists, no emoji. If you do not know, say so plainly.",
+].join(" ");
 
 /** `sidePanel` is a valid MV3 API but missing from WXT 0.19 browser typings. */
 interface SidePanelApi {
@@ -43,14 +77,31 @@ async function ensureOffscreen(): Promise<void> {
     await offscreen.createDocument({
       url: "offscreen.html",
       reasons: ["USER_MEDIA", "AUDIO_PLAYBACK"],
-      justification: "Record push-to-talk audio and play spoken replies.",
+      justification: "Record push-to-talk audio and speak replies.",
     });
   } catch {
     // Already exists, or the runtime lacks the API — the recorder reports it.
   }
 }
 
-/** Recorder adapter: `VoiceSession` drives the mic that lives in the offscreen host. */
+/* --- talking to the page's avatar ---------------------------------------- */
+
+async function sendToTab(message: unknown): Promise<void> {
+  try {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id != null) await browser.tabs.sendMessage(tab.id, message);
+  } catch {
+    // No active tab, or no content script in it — nothing to show.
+  }
+}
+
+function toTab(payload: { action: "say" | "status"; text: string }): Promise<void> {
+  return sendToTab({ type: "diggy:avatar", ...payload });
+}
+
+/* --- voice pipeline ------------------------------------------------------ */
+
+/** Recorder adapter: the mic lives in the offscreen host. */
 const recorder: VoiceRecorder = {
   async start() {
     await ensureOffscreen();
@@ -68,30 +119,58 @@ const recorder: VoiceRecorder = {
   },
 };
 
-/** Backend base URL for server-side speech-to-text (Groq `whisper-large-v3`). */
-const BACKEND_BASE_URL = "http://localhost:17323";
-
-/**
- * STT goes through the backend proxy so the provider key stays server-side. The
- * `Provider` shape is satisfied locally; only `transcribe` is used here.
- */
-const sttProvider: Provider = {
-  id: "backend-stt",
-  label: "DIGGY backend STT",
-  chat: () => Promise.reject(new Error("chat is not used for speech-to-text")),
-  async transcribe(audio, opts) {
-    const response = await fetch(`${BACKEND_BASE_URL}/api/stt`, {
-      method: "POST",
-      headers: { "content-type": opts?.language ? "audio/webm" : "audio/webm" },
-      body: audio,
-    });
-    if (!response.ok) throw new Error(`STT failed (${response.status})`);
-    const data = (await response.json()) as { text?: string };
-    return data.text ?? "";
-  },
+/** STT reads the key at call time so a key added in settings works immediately. */
+const transcribe = async (
+  audio: ArrayBuffer,
+  opts?: { mimeType?: string; language?: string },
+): Promise<string> => {
+  const keys = await readKeys();
+  if (!keys.groq) throw new Error("no-groq-key");
+  return createTranscriber(createGroqProvider({ apiKey: keys.groq }))(audio, opts);
 };
 
-const voice = new VoiceSession({ recorder, transcribe: createTranscriber(sttProvider), bus });
+const voice = new VoiceSession({ recorder, transcribe, bus });
+
+/** Ask the model and speak the answer. */
+async function respond(transcript: string): Promise<void> {
+  const keys = await readKeys();
+  if (!keys.groq && !keys.nvidia) {
+    await toTab({
+      action: "status",
+      text: "Add your Groq API key in DIGGY settings (options) to chat.",
+    });
+    return;
+  }
+
+  bus.emit(BusEvents.AvatarStatus, { text: VOICE_STATUS.thinking });
+
+  let reply: string;
+  try {
+    const registry = createBrainRegistry({
+      providers: {
+        groq: keys.groq ? { apiKey: keys.groq } : {},
+        "nvidia-nim": keys.nvidia ? { apiKey: keys.nvidia } : {},
+      },
+    });
+    const result = await registry.chat({
+      messages: [
+        { role: "system", content: PERSONA },
+        { role: "user", content: transcript },
+      ],
+      temperature: 0.3,
+      maxTokens: 320,
+    });
+    reply = result.text.trim() || "I'm not sure how to answer that.";
+  } catch (error) {
+    reply = `Sorry, I could not reach the model. ${error instanceof Error ? error.message : ""}`.trim();
+  }
+
+  bus.emit(BusEvents.AvatarStatus, { text: VOICE_STATUS.speaking });
+  await ensureOffscreen();
+  await browser.runtime.sendMessage({ type: OFFSCREEN.say, text: reply }).catch(() => undefined);
+  await toTab({ action: "say", text: reply });
+  bus.emit(BusEvents.AvatarStatus, { text: "" });
+}
 
 export default defineBackground(() => {
   bus.emit(BusEvents.AvatarStatus, { text: "DIGGY is ready" });
@@ -117,5 +196,16 @@ export default defineBackground(() => {
       void voice.onSilence("silence");
     }
     return undefined;
+  });
+
+  // A finished transcript → ask the model → speak + show the answer.
+  bus.on<{ text?: string }>(BusEvents.VoiceTranscript, (event) => {
+    const text = event.payload?.text;
+    if (text) void respond(text);
+  });
+
+  // Status lines (Listening… / Transcribing… / Thinking…) ride to the page avatar.
+  bus.on<{ text?: string }>(BusEvents.AvatarStatus, (event) => {
+    void toTab({ action: "status", text: event.payload?.text ?? "" });
   });
 });

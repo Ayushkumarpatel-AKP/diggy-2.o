@@ -7,7 +7,8 @@
  *
  *   type AvatarState =
  *     | "idle" | "blink" | "breathing" | "listening" | "thinking" | "speaking"
- *     | "walk" | "happy" | "success" | "warning" | "sleep" | "celebration";
+ *     | "walk" | "happy" | "success" | "warning" | "sleep" | "celebration"
+ *     | "entry" | "stretch" | "exit";
  *   type AvatarExpression = Record<string, number>;
  *
  *   interface AvatarAPI {
@@ -84,6 +85,10 @@ export interface AvatarProps {
   corner?: AvatarCorner;
   /** Rendered width in CSS pixels. Defaults to 200. */
   size?: number;
+  /** Play the greeting (`entry`) once on mount. Defaults to true. */
+  intro?: boolean;
+  /** Idle ambience: play `stretch` this often (ms). 0 disables. Defaults to 45000. */
+  stretchEveryMs?: number;
   /** External controller to drive; one is created internally otherwise. */
   controller?: AvatarController;
   /** Called once a renderer reports its capability. */
@@ -159,6 +164,8 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
     fps = 30,
     corner = "bottom-right",
     size = 200,
+    intro = true,
+    stretchEveryMs = 45_000,
     controller,
     onCapability,
     onModeChange,
@@ -177,12 +184,22 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
     onModeChange?.(snapshot.mode, snapshot.fallbackReason);
   }, [snapshot.mode, snapshot.fallbackReason, onModeChange]);
 
+  // Greet exactly once — ideally the moment the renderer reports it is ready,
+  // so the greeting clip is actually loaded when it plays.
+  const greetedRef = useRef(false);
+  const greetOnce = useCallback(() => {
+    if (greetedRef.current) return;
+    greetedRef.current = true;
+    active.play("entry");
+  }, [active]);
+
   const handleCapability = useCallback(
     (report: AvatarCapabilityReport) => {
       active.setCapability(report);
       onCapability?.(report);
+      greetOnce();
     },
-    [active, onCapability],
+    [active, onCapability, greetOnce],
   );
 
   const handleFbxError = useCallback(
@@ -191,6 +208,24 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
     },
     [active],
   );
+
+  // Lifecycle: greet once the renderer is ready, then settle into idle (the
+  // machine auto-returns from `entry`). The timeout is a safety net for a
+  // renderer that never reports capability.
+  useEffect(() => {
+    if (!intro) return;
+    const timer = window.setTimeout(greetOnce, 6000);
+    return () => window.clearTimeout(timer);
+  }, [intro, greetOnce]);
+
+  // Idle ambience: stretch every so often, but only while genuinely idle.
+  useEffect(() => {
+    if (!stretchEveryMs || stretchEveryMs <= 0) return;
+    const id = window.setInterval(() => {
+      if (active.getSnapshot().state === "idle") active.play("stretch");
+    }, stretchEveryMs);
+    return () => window.clearInterval(id);
+  }, [stretchEveryMs, active]);
 
   useImperativeHandle(
     ref,

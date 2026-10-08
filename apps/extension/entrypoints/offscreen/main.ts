@@ -246,10 +246,63 @@ async function playAudio(
   }
 }
 
+/* --- text-to-speech (browser voice) -------------------------------------- */
+
+interface SpeechEnv {
+  synth: SpeechSynthesis;
+  Utterance: typeof SpeechSynthesisUtterance;
+}
+
+/** `speechSynthesis` lives on `window`; resolve it lazily and defensively. */
+function getSpeech(): SpeechEnv | null {
+  const scope = window as unknown as {
+    speechSynthesis?: SpeechSynthesis;
+    SpeechSynthesisUtterance?: typeof SpeechSynthesisUtterance;
+  };
+  if (!scope.speechSynthesis || !scope.SpeechSynthesisUtterance) return null;
+  return { synth: scope.speechSynthesis, Utterance: scope.SpeechSynthesisUtterance };
+}
+
+/** Speak a reply with the browser's own voice — no network, no provider key. */
+function sayText(
+  text: string,
+  lang?: string,
+  rate?: number,
+  pitch?: number,
+): Promise<{ ok: boolean; error?: string }> {
+  const speech = getSpeech();
+  const clean = text.trim();
+  if (!speech) return Promise.resolve({ ok: false, error: "speech synthesis unavailable" });
+  if (!clean) return Promise.resolve({ ok: true });
+  speech.synth.cancel();
+  return new Promise((resolve) => {
+    const Utterance = speech.Utterance;
+    const utterance = new Utterance(clean);
+    if (lang) utterance.lang = lang;
+    utterance.rate = rate ?? 1.02;
+    utterance.pitch = pitch ?? 1;
+    utterance.onend = () => resolve({ ok: true });
+    utterance.onerror = () => resolve({ ok: false, error: "speech synthesis failed" });
+    speech.synth.speak(utterance);
+  });
+}
+
 /* --- message bridge ------------------------------------------------------ */
 
 browser.runtime.onMessage.addListener((raw: unknown) => {
-  const message = raw as { type?: string; autoStop?: boolean; base64?: string; mimeType?: string; interrupt?: boolean } | undefined;
+  const message = raw as
+    | {
+        type?: string;
+        autoStop?: boolean;
+        base64?: string;
+        mimeType?: string;
+        interrupt?: boolean;
+        text?: string;
+        lang?: string;
+        rate?: number;
+        pitch?: number;
+      }
+    | undefined;
   if (!message) return undefined;
 
   if (message.type === OFFSCREEN.ping) return Promise.resolve({ ok: true });
@@ -266,6 +319,13 @@ browser.runtime.onMessage.addListener((raw: unknown) => {
   }
   if (message.type === OFFSCREEN.play && typeof message.base64 === "string") {
     return playAudio(message.base64, message.mimeType ?? "audio/mpeg", message.interrupt !== false);
+  }
+  if (message.type === OFFSCREEN.say && typeof message.text === "string") {
+    return sayText(message.text, message.lang, message.rate, message.pitch);
+  }
+  if (message.type === OFFSCREEN.hush) {
+    getSpeech()?.synth.cancel();
+    return Promise.resolve({ ok: true });
   }
   return undefined;
 });

@@ -42,7 +42,7 @@ export interface AvatarStateProfile {
 }
 
 /**
- * The canonical 12 states. Mirrors `AvatarState` from `@diggy/shared` and is the
+ * The canonical states. Mirrors `AvatarState` from `@diggy/shared` and is the
  * order a host should iterate when validating coverage.
  */
 export const AVATAR_STATES: readonly AvatarState[] = [
@@ -58,6 +58,9 @@ export const AVATAR_STATES: readonly AvatarState[] = [
   "warning",
   "sleep",
   "celebration",
+  "entry",
+  "stretch",
+  "exit",
 ];
 
 /**
@@ -70,14 +73,17 @@ export const STATE_PRIORITY: Record<AvatarState, number> = {
   blink: 1,
   breathing: 1,
   sleep: 1,
+  stretch: 1,
   walk: 2,
   listening: 2,
   thinking: 2,
   speaking: 2,
   happy: 3,
+  entry: 3,
   success: 4,
   warning: 4,
   celebration: 5,
+  exit: 6,
 };
 
 /**
@@ -194,6 +200,34 @@ export const STATE_PROFILES: Record<AvatarState, AvatarStateProfile> = {
     procedural: ["blink"],
     autoReturn: true,
     label: "Celebration",
+  },
+  // --- lifecycle + idle ambience ------------------------------------------
+  entry: {
+    clip: "standing-greeting",
+    priority: STATE_PRIORITY.entry,
+    crossFade: 0.28,
+    expression: "happy",
+    procedural: ["blink"],
+    autoReturn: true,
+    label: "Greeting",
+  },
+  stretch: {
+    clip: "arm-stretching",
+    priority: STATE_PRIORITY.stretch,
+    crossFade: 0.3,
+    expression: "surprised",
+    procedural: ["blink"],
+    autoReturn: true,
+    label: "Stretching",
+  },
+  exit: {
+    clip: "walking",
+    priority: STATE_PRIORITY.exit,
+    crossFade: 0.3,
+    expression: "happy",
+    procedural: [],
+    autoReturn: false,
+    label: "Goodbye",
   },
 };
 

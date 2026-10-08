@@ -188,7 +188,10 @@ export function FbxAvatar({
         const frame = computeFbxFrame({ min: box.min, max: box.max });
         fbx.scale.setScalar(frame.scale);
         fbx.position.set(frame.position.x, frame.position.y, frame.position.z);
-        fbx.rotation.y = Math.PI;
+        // The rig is authored facing +Z (the reference rotated it 180° only
+        // because its camera sat at -Z). Our corner camera is at +Z, so leaving
+        // the model unrotated makes her face the viewer.
+        fbx.rotation.y = 0;
         basePositionRef.current.set(frame.position.x, frame.position.y, frame.position.z);
         applyChioriTextures(fbx, assetBase);
 

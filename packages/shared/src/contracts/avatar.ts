@@ -15,7 +15,13 @@ export type AvatarState =
   | "success"
   | "warning"
   | "sleep"
-  | "celebration";
+  | "celebration"
+  /** Lifecycle: greet on appearance. */
+  | "entry"
+  /** Idle ambience: a stretch between idle loops. */
+  | "stretch"
+  /** Lifecycle: wave/walk off when leaving. */
+  | "exit";
 
 export type AvatarExpression = Record<string, number>;
 

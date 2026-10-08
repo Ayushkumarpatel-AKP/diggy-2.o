@@ -58,9 +58,11 @@ React resolve to its production build and breaks `@diggy/ui`'s `Dashboard.dom.te
 2. **Browser verification** — FBX render verified in Edge (headless via the e2e harness) and framed to
    show the whole body; still to capture a pixel diff vs `diggy motion/Diggy Pastel Productivity Dashboard.png`
    and the CTRL+SPACE → STT → reply round-trip.
-3. **STT endpoint** — `apps/extension/entrypoints/background.ts` posts clips to
-   `http://localhost:17323/api/stt`; `services/api` must expose it, and the extension needs a
-   localhost host permission (requested at runtime).
+3. **Voice is wired (BYOK)** — Ctrl+Space records → Groq `whisper-large-v3` STT → Groq chat
+   (NVIDIA NIM failover) → the reply is spoken by the offscreen browser voice and shown on the
+   avatar. The user pastes their own key in DIGGY options (stored in `chrome.storage.local`), so
+   nothing is bundled. Not yet done: lip-sync on the spoken reply (`speechSynthesis` cannot feed
+   an analyser) and streaming partial transcripts.
 4. **e2e** — `pnpm --filter @diggy/e2e test` needs Playwright browsers installed
    (`npx playwright install chromium`).
 5. **Capability report** ships 8 clip FBX (+ `Chiori.fbx` = 9 FBX); 30,126 tris is 0.4% over the 30k budget.

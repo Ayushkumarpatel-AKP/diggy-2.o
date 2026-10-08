@@ -105,6 +105,9 @@ export const EXPRESSION_FOR_STATE: Record<AvatarState, ExpressionPresetName | nu
   warning: "angry",
   sleep: "sleepy",
   celebration: "excited",
+  entry: "happy",
+  stretch: "surprised",
+  exit: "happy",
 };
 
 /** A face with every morph at 0. */

@@ -6,15 +6,36 @@
  * full-viewport host that is `pointer-events: none` everywhere except the
  * avatar's own box — so it never blocks the page.
  *
+ * The background drives it for voice: it sends `diggy:avatar` messages to make
+ * the avatar speak a reply or show a status line. On teardown the companion
+ * plays its `exit` animation.
+ *
  * NOTE (demo posture): this is currently a *static* content script so the
  * companion is visible immediately. The production posture keeps host access
  * optional and registers the script on demand (`registration: "runtime"`);
  * see agents/STATUS.md.
  */
-import { createElement } from "react";
+import { createElement, createRef } from "react";
 import { createRoot } from "react-dom/client";
 import { Avatar } from "@diggy/avatar";
-import type { AvatarProps } from "@diggy/avatar";
+import type { AvatarHandle, AvatarProps } from "@diggy/avatar";
+import type { AvatarState } from "@diggy/shared";
+
+/** Messages the background sends to drive the on-page avatar. */
+interface AvatarMessage {
+  type: "diggy:avatar";
+  action: "say" | "status" | "play";
+  text?: string;
+  state?: AvatarState;
+}
+
+function isAvatarMessage(value: unknown): value is AvatarMessage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { type?: unknown }).type === "diggy:avatar"
+  );
+}
 
 export default defineContentScript({
   matches: ["<all_urls>"],
@@ -37,6 +58,7 @@ export default defineContentScript({
     // union, which lists individual files rather than the `assets/avatar`
     // directory. The runtime accepts any relative path, so widen the signature.
     const resolveUrl = browser.runtime.getURL as (path: string) => string;
+    const handleRef = createRef<AvatarHandle>();
 
     const avatarProps: AvatarProps = {
       assetBase: resolveUrl("assets/avatar"),
@@ -45,9 +67,22 @@ export default defineContentScript({
       fps: 24,
     };
     const root = createRoot(mount);
-    root.render(createElement(Avatar, avatarProps));
+    root.render(createElement(Avatar, { ...avatarProps, ref: handleRef }));
+
+    const onMessage = (raw: unknown): undefined => {
+      if (!isAvatarMessage(raw)) return undefined;
+      const avatar = handleRef.current;
+      if (!avatar) return undefined;
+      if (raw.action === "say" && raw.text) avatar.say(raw.text, "speaking");
+      else if (raw.action === "status" && raw.text) avatar.status(raw.text);
+      else if (raw.action === "play" && raw.state) avatar.play(raw.state);
+      return undefined;
+    };
+    browser.runtime.onMessage.addListener(onMessage);
 
     ctx.onInvalidated(() => {
+      browser.runtime.onMessage.removeListener(onMessage);
+      handleRef.current?.play("exit");
       root.unmount();
       host.remove();
     });

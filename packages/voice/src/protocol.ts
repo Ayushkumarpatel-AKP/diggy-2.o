@@ -9,7 +9,7 @@
  * interface VoiceTranscriptPayload { text: string }        // BusEvents.VoiceTranscript
  * interface AvatarStatusPayload { text: string }            // BusEvents.AvatarStatus
  * interface AvatarStatePayload { state: AvatarState }       // BusEvents.AvatarState
- * const OFFSCREEN: { ping, start, stop, warm, silence, play, level, listening }  // message names
+ * const OFFSCREEN: { ping, start, stop, warm, silence, play, say, hush, level }  // message names
  * // END INTERFACE FOR INTEGRATION
  *
  * One home for every string that crosses a context boundary, so the background,
@@ -59,9 +59,21 @@ export const OFFSCREEN = {
   silence: "diggy:offscreen-silence",
   /** Background → offscreen: play this TTS clip. */
   play: "diggy:offscreen-play",
+  /** Background → offscreen: speak this text with the browser's voice. */
+  say: "diggy:offscreen-say",
+  /** Background → offscreen: stop speaking / cancel speech. */
+  hush: "diggy:offscreen-hush",
   /** Offscreen → background: a lip-sync level/band frame. */
   level: "diggy:offscreen-level",
 } as const;
+
+export interface OffscreenSayMessage {
+  type: typeof OFFSCREEN.say;
+  text: string;
+  lang?: string;
+  rate?: number;
+  pitch?: number;
+}
 
 export interface OffscreenStartMessage {
   type: typeof OFFSCREEN.start;

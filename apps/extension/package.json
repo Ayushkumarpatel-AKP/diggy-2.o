@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@diggy/avatar": "workspace:*",
+    "@diggy/core": "workspace:*",
     "@diggy/shared": "workspace:*",
     "@diggy/ui": "workspace:*",
     "@diggy/voice": "workspace:*",

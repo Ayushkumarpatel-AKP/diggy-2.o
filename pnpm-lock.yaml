@@ -54,6 +54,9 @@ importers:
       '@diggy/avatar':
         specifier: workspace:*
         version: link:../../packages/avatar
+      '@diggy/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@diggy/shared':
         specifier: workspace:*
         version: link:../../packages/shared
