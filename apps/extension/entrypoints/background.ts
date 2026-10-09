@@ -11,6 +11,7 @@ import {
 } from "../src/provider-settings.js";
 import { createAgentRuntime, type AgentRuntime } from "../src/agent-runtime.js";
 import type { SendToPage } from "../src/page-tools.js";
+import { createUnifiedRuntime, type UnifiedRuntime } from "../src/unified-runtime.js";
 import { bindPushToTalk, type CommandsApi, type RuntimeMessageApi } from "../src/shortcut.js";
 
 /**
@@ -35,6 +36,17 @@ import { bindPushToTalk, type CommandsApi, type RuntimeMessageApi } from "../src
  * transcript to the same command path.
  */
 const bus = createBus({ source: "background" });
+
+/**
+ * The engines that keep running between commands — the monitor (tracking), the
+ * reminder engine and the activity log.
+ *
+ * They are created inside `defineBackground` because they only make sense in a
+ * live service worker, and the agent loop reads them through `toolDeps()` when it
+ * builds its tool set. Without this, tracking and reminders exist as code and
+ * never fire, which is exactly how they read as broken.
+ */
+let runtime: UnifiedRuntime | null = null;
 
 /* --- settings ------------------------------------------------------------- */
 
@@ -84,7 +96,11 @@ const sendToPage: SendToPage = async (message: unknown) => {
   return browser.tabs.sendMessage(tabId, message);
 };
 
-function toTab(payload: { action: "say" | "status" | "play"; text?: string }): Promise<void> {
+function toTab(payload: {
+  action: "say" | "status" | "play";
+  text?: string;
+  state?: string;
+}): Promise<void> {
   return sendToTab({ type: "diggy:avatar", ...payload });
 }
 
@@ -191,6 +207,9 @@ async function buildRuntime(context?: string): Promise<AgentRuntime | null> {
     onNotify: async (title, message) => {
       await toTab({ action: "say", text: message ? `${title}. ${message}` : title });
     },
+    // The live engines: tracking, reminders, web search. Absent ones are simply
+    // not offered to the model.
+    ...(runtime ? runtime.toolDeps() : {}),
     ...(context ? { context } : {}),
   });
 }
@@ -306,6 +325,21 @@ async function handleCommand(intent: string | undefined, text?: string): Promise
 
 export default defineBackground(() => {
   bus.emit(BusEvents.AvatarStatus, { text: "DIGGY is ready" });
+
+  // Start the engines that keep running between commands. This is what makes
+  // tracking and reminders actually fire — without it they are dead code.
+  runtime = createUnifiedRuntime({
+    bus,
+    say: (text) => toTab({ action: "say", text }),
+    status: (text) => toTab({ action: "status", text }),
+    play: (state) => toTab({ action: "play", state }),
+  });
+  runtime.install();
+
+  // A reminder's one-shot alarm (and the monitor's repeating tick) arrive here.
+  browser.alarms.onAlarm.addListener((alarm: { name: string }) => {
+    void runtime?.handleAlarm(alarm.name);
+  });
 
   browser.runtime.onInstalled.addListener(() => {
     const sidePanel = getSidePanel();
