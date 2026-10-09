@@ -111,8 +111,29 @@ export type ActionIntent =
   | "voice"
   | "ask";
 
+/** Exact intent sentinels the quick commands send — matched before any substring fallback,
+ *  so `read.repo` (which contains none of the label keywords) still reaches the runtime. */
+const INTENT_SENTINEL: Record<string, ActionIntent> = {
+  "monitor.track": "track",
+  "read.summarize": "summarize",
+  "read.explain": "explain",
+  "read.repo": "repository",
+};
+
+/**
+ * Sentinels with no matching ActionIntent. `form.fill` is a page goal, not one of the
+ * runtime's fixed intents, so it travels the ask channel as a goal sentence instead of
+ * falling through to a local status line. The sentence names no submit — the agent fills
+ * and the user presses Submit (product safety rule: never auto-submit).
+ */
+const GOAL_SENTINEL: Record<string, string> = {
+  "form.fill": "Fill this form with my saved profile, without submitting.",
+};
+
 /** Map a button's label onto a runtime intent (`null` = local-only feedback). */
 export function intentForLabel(label: string): ActionIntent | null {
+  const exact = INTENT_SENTINEL[label];
+  if (exact) return exact;
   const value = label.toLowerCase();
   if (value.includes("summar")) return "summarize";
   if (value.includes("explain")) return "explain";
@@ -181,6 +202,15 @@ export function Dashboard({
   const handleCommand = useCallback(
     (label: string, intent?: string) => {
       // Real work goes to the runtime; everything else is a local acknowledgement.
+      // A goal sentinel (e.g. `form.fill`) has no fixed intent, so it asks the runtime
+      // with a goal sentence over the existing `ask` channel — no new intents invented.
+      if (intent) {
+        const goal = GOAL_SENTINEL[intent];
+        if (goal && onAsk) {
+          onAsk(goal);
+          return;
+        }
+      }
       const action = intentForLabel(intent ?? label);
       if (action && onAction) {
         onAction(action);
@@ -188,7 +218,7 @@ export function Dashboard({
       }
       status.push({ text: intent ? `${label} · ${intent}` : label, priority: 1, mood: "thinking" });
     },
-    [status, onAction],
+    [status, onAction, onAsk],
   );
 
   const handleAsk = useCallback(

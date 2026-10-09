@@ -78,6 +78,9 @@ importers:
       '@diggy/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@diggy/vault':
+        specifier: workspace:*
+        version: link:../../packages/vault
       '@diggy/voice':
         specifier: workspace:*
         version: link:../../packages/voice
