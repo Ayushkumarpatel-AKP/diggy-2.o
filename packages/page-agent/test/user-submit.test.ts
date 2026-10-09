@@ -12,6 +12,7 @@ import {
   findSubmitControl,
   performUserSubmit,
   SUBMIT_MESSAGE_TYPE,
+  type ToolResponse,
 } from '../src/index.js';
 
 /** Count real submits on the form and stop jsdom's "not implemented" noise. */
@@ -134,7 +135,7 @@ describe('the agent loop has no route to submit', () => {
     expect(submits()).toBe(0);
 
     // Only the explicit submit message presses it.
-    const viaGesture = await host.handle({ type: SUBMIT_MESSAGE_TYPE, id: '2' });
+    const viaGesture = (await host.handle({ type: SUBMIT_MESSAGE_TYPE, id: '2' })) as ToolResponse;
     expect(viaGesture.ok).toBe(true);
     expect(viaGesture.label).toBe('Apply now');
     expect(submits()).toBe(1);

@@ -5,6 +5,7 @@
  * provider the user chose). The background builds a `Provider` from this at call
  * time, so changing the key/source takes effect immediately.
  */
+import { createOpenAICompatibleProvider, createRegistry, type FailoverRegistry, type Provider } from "@diggy/core";
 
 export interface ProviderSettings {
   /** Which preset the values came from (drives the UI + defaults). */
@@ -168,4 +169,80 @@ export function originPattern(baseUrl: string): string | null {
   } catch {
     return null;
   }
+}
+
+/* --- building providers --------------------------------------------------- */
+
+/** Where an optional second provider's credentials live. */
+export const FALLBACK_KEY = "diggy:providers:fallback";
+
+/** A second provider, used when the primary is rate-limited or down. */
+export interface FallbackSettings {
+  presetId: string;
+  apiKey: string;
+  baseUrl?: string;
+  model?: string;
+}
+
+/** Build the provider described by the user's settings. */
+export function buildProvider(settings: ProviderSettings): Provider {
+  const preset = presetById(settings.presetId);
+  return createOpenAICompatibleProvider({
+    id: settings.presetId,
+    label: preset?.label ?? settings.presetId,
+    baseURL: settings.baseUrl,
+    apiKey: settings.apiKey.trim() || undefined,
+    model: settings.model,
+    sttModel: settings.sttModel || undefined,
+  });
+}
+
+function normalizeFallback(raw: unknown): FallbackSettings | null {
+  const value = (raw ?? {}) as Partial<FallbackSettings>;
+  if (typeof value.presetId !== "string" || value.presetId === "") return null;
+  if (typeof value.apiKey !== "string" || value.apiKey.trim() === "") return null;
+  const preset = presetById(value.presetId);
+  const fallback: FallbackSettings = { presetId: value.presetId, apiKey: value.apiKey.trim() };
+  const baseUrl = value.baseUrl || preset?.baseUrl;
+  if (baseUrl) fallback.baseUrl = baseUrl;
+  const model = value.model || preset?.model;
+  if (model) fallback.model = model;
+  return fallback;
+}
+
+/** Read the optional second provider (never throws). */
+export async function readFallback(): Promise<FallbackSettings | null> {
+  try {
+    const stored = await browser.storage.local.get(FALLBACK_KEY);
+    return normalizeFallback(stored[FALLBACK_KEY]);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A failover registry for the agent loop.
+ *
+ * The extension is BYOK, so the chain is built from the user's own credentials
+ * rather than `process.env` (which only exists server-side). With one provider
+ * configured this still gives retry and health accounting; with a fallback key
+ * set it gives real Groq → NVIDIA failover.
+ */
+export function registryFromSettings(
+  settings: ProviderSettings,
+  fallback?: FallbackSettings | null,
+): FailoverRegistry {
+  const providers: Provider[] = [buildProvider(settings)];
+  if (fallback && fallback.presetId !== settings.presetId) {
+    providers.push(
+      createOpenAICompatibleProvider({
+        id: fallback.presetId,
+        label: presetById(fallback.presetId)?.label ?? fallback.presetId,
+        baseURL: fallback.baseUrl ?? "",
+        apiKey: fallback.apiKey,
+        model: fallback.model ?? "",
+      }),
+    );
+  }
+  return createRegistry({ providers });
 }

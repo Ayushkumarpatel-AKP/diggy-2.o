@@ -144,12 +144,20 @@ describe('registryToAgentTools', () => {
 
   it('exposes the curated act verbs and excludes the submit-shaped presses', () => {
     const engine = createActionAPI();
-    const tools = registryToAgentTools(engine.tools.list(), async () => ({ ok: true }));
+    const tools = registryToAgentTools(
+      engine.tools.list(),
+      async () => ({ ok: true }),
+      AGENT_ACTION_TOOLS,
+    );
+    const names = tools.map((tool) => tool.schema.name);
 
-    expect(tools.map((tool) => tool.schema.name)).toEqual([...AGENT_ACTION_TOOLS]);
-    expect(tools.map((tool) => tool.schema.name)).not.toContain('pressKey');
-    expect(tools.map((tool) => tool.schema.name)).not.toContain('submit');
-    expect(tools.map((tool) => tool.schema.name)).not.toContain('performUserSubmit');
+    // Same set as the curated list (the catalogue's own order is preserved),
+    // with the press-shaped verbs left out.
+    expect(new Set(names)).toEqual(new Set(AGENT_ACTION_TOOLS));
+    expect(new Set(names).size).toBe(AGENT_ACTION_TOOLS.length);
+    expect(names).not.toContain('pressKey');
+    expect(names).not.toContain('submit');
+    expect(names).not.toContain('performUserSubmit');
   });
 
   it('runs a real read through the engine end to end', async () => {

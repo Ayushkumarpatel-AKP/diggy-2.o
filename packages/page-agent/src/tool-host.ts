@@ -20,11 +20,18 @@ import type { ActionResult as ToolResult } from '@diggy/shared';
 import { createActionAPI } from './action-api.js';
 import type { ActionEngine } from './action-api.js';
 import { ACTION_MESSAGE_TYPE } from './host.js';
-import type { ToolHandlerContext } from './tool-registry.js';
+import type { ActionTool, ToolHandlerContext } from './tool-registry.js';
 import { findSubmitControl, performUserSubmit } from './user-submit.js';
 
 /** The message `type` a user-initiated submit arrives on. */
 export const SUBMIT_MESSAGE_TYPE = 'diggy:submit';
+
+/**
+ * Ask for the static tool catalogue (`name`/`description`/`parameters`/
+ * `category`). The service worker holds no DOM, so this is how it learns the
+ * verbs to advertise to the model without duplicating the list.
+ */
+export const CATALOG_MESSAGE_TYPE = 'diggy:action-catalog';
 
 /** Ask the page to run one registry tool. */
 export interface ToolRequest {
@@ -34,6 +41,12 @@ export interface ToolRequest {
   args?: Record<string, unknown>;
   /** The user approved a policy `confirm` for this call. */
   approved?: boolean;
+}
+
+/** Ask for the tool catalogue. */
+export interface CatalogRequest {
+  type: typeof CATALOG_MESSAGE_TYPE;
+  id: string;
 }
 
 /** Ask the page to press its submit control (user gesture only). */
@@ -51,6 +64,16 @@ export interface ToolResponse {
   label?: string;
   error?: string;
 }
+
+export interface CatalogResponse {
+  id: string;
+  ok: boolean;
+  tools?: ActionTool[];
+  error?: string;
+}
+
+/** Whatever the host answers with — a tool result or the catalogue. */
+export type HostResponse = ToolResponse | CatalogResponse;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -79,11 +102,19 @@ function isSubmitRequest(message: unknown): message is SubmitRequest {
   return candidate['type'] === SUBMIT_MESSAGE_TYPE && typeof candidate['id'] === 'string';
 }
 
+function isCatalogRequest(message: unknown): message is CatalogRequest {
+  if (typeof message !== 'object' || message === null) return false;
+  const candidate = message as Record<string, unknown>;
+  return candidate['type'] === CATALOG_MESSAGE_TYPE && typeof candidate['id'] === 'string';
+}
+
 export interface ToolHost {
   readonly engine: ActionEngine;
   /** Does this host own the message? */
   claims(message: unknown): boolean;
-  handle(message: unknown): Promise<ToolResponse>;
+  handle(message: unknown): Promise<HostResponse>;
+  /** The static catalogue the service worker advertises to the model. */
+  catalog(): ActionTool[];
 }
 
 /**
@@ -92,10 +123,23 @@ export interface ToolHost {
  */
 export function createToolHost(engine: ActionEngine = createActionAPI()): ToolHost {
   function claims(message: unknown): boolean {
-    return isToolRequest(message) || isSubmitRequest(message);
+    return isToolRequest(message) || isSubmitRequest(message) || isCatalogRequest(message);
   }
 
-  async function handle(message: unknown): Promise<ToolResponse> {
+  function catalog(): ActionTool[] {
+    return engine.tools.list().map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+      category: tool.category,
+    }));
+  }
+
+  async function handle(message: unknown): Promise<HostResponse> {
+    if (isCatalogRequest(message)) {
+      return { id: message.id, ok: true, tools: catalog() };
+    }
+
     if (isSubmitRequest(message)) {
       const control = findSubmitControl();
       if (!control) {
@@ -118,7 +162,7 @@ export function createToolHost(engine: ActionEngine = createActionAPI()): ToolHo
     return { id: message.id, ok: result.ok, result };
   }
 
-  return { engine, claims, handle };
+  return { engine, claims, handle, catalog };
 }
 
 /**
@@ -127,7 +171,7 @@ export function createToolHost(engine: ActionEngine = createActionAPI()): ToolHo
  */
 export function createToolListener(
   host: ToolHost,
-  send: (response: ToolResponse) => void,
+  send: (response: HostResponse) => void,
 ): (message: unknown) => boolean {
   return (message: unknown): boolean => {
     if (!host.claims(message)) return false;

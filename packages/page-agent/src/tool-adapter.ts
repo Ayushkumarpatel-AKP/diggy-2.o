@@ -16,7 +16,7 @@
  * `invoke` that crosses that boundary (see `apps/extension/src/page-tools.ts`).
  */
 import type { ActionResult as ToolResult, ToolSchema } from '@diggy/shared';
-import type { RegisteredTool, ToolParameter } from './tool-registry.js';
+import type { ActionTool, ToolParameter } from './tool-registry.js';
 
 /** The loop's per-tool context. Structurally identical to `@diggy/core`'s. */
 export interface AgentToolContext {
@@ -60,7 +60,7 @@ export function paramsToJsonSchema(
 }
 
 /** The `ToolSchema` the loop advertises for a registry tool. */
-export function toToolSchema(tool: RegisteredTool): ToolSchema {
+export function toToolSchema(tool: ActionTool): ToolSchema {
   return {
     name: tool.name,
     description: tool.description,
@@ -108,8 +108,8 @@ export function formatToolResult(name: string, result: ToolResult): Record<strin
   return out;
 }
 
-/** Wrap one registry tool as a loop tool that delegates to `invoke`. */
-export function toAgentTool(tool: RegisteredTool, invoke: ToolInvoker): AgentToolShape {
+/** Wrap one catalogue tool as a loop tool that delegates to `invoke`. */
+export function toAgentTool(tool: ActionTool, invoke: ToolInvoker): AgentToolShape {
   return {
     schema: toToolSchema(tool),
     run: async (args) => formatToolResult(tool.name, await invoke(tool.name, args ?? {})),
@@ -117,11 +117,14 @@ export function toAgentTool(tool: RegisteredTool, invoke: ToolInvoker): AgentToo
 }
 
 /**
- * Wrap every tool in a registry. Pass `names` to expose a curated subset — a
+ * Wrap every tool in a catalogue. Pass `names` to expose a curated subset — a
  * smaller catalogue is markedly easier for a model to pick from correctly.
+ *
+ * Takes the *static* half (`ActionTool`), not a `RegisteredTool`: the catalogue
+ * crosses the message boundary from the content script and its `run` does not.
  */
 export function registryToAgentTools(
-  tools: readonly RegisteredTool[],
+  tools: readonly ActionTool[],
   invoke: ToolInvoker,
   names?: readonly string[],
 ): AgentToolShape[] {

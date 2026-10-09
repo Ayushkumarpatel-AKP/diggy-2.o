@@ -15,6 +15,7 @@ import { createElement, createRef } from "react";
 import { createRoot } from "react-dom/client";
 import { Avatar } from "@diggy/avatar";
 import type { AvatarHandle, AvatarProps } from "@diggy/avatar";
+import { createToolHost } from "@diggy/page-agent";
 import type { AvatarState } from "@diggy/shared";
 
 /** Messages the background sends to drive the on-page avatar. */
@@ -225,7 +226,14 @@ export default defineContentScript({
     }
 
     /* --- messages -------------------------------------------------------- */
+
+    // The Action Engine, driven by the service worker's agent loop. This is what
+    // lets DIGGY read, click, type, scroll and fill the page it is on.
+    const toolHost = createToolHost();
+
     const onMessage = (raw: unknown): unknown => {
+      if (toolHost.claims(raw)) return toolHost.handle(raw);
+
       const message = raw as { type?: string; action?: string; lang?: string } | undefined;
 
       // Page reading for the runtime. We are already in the page, so this needs

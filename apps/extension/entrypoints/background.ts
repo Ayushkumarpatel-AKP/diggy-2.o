@@ -1,30 +1,42 @@
 import { BusEvents, createBus } from "@diggy/shared";
-import { createOpenAICompatibleProvider } from "@diggy/core";
 import { VOICE_STATUS } from "@diggy/voice";
 
 import {
   normalizeSettings,
-  presetById,
+  readFallback,
+  registryFromSettings,
   SETTINGS_KEY,
   settingsReady,
   type ProviderSettings,
 } from "../src/provider-settings.js";
+import { createAgentRuntime, type AgentRuntime } from "../src/agent-runtime.js";
+import type { SendToPage } from "../src/page-tools.js";
 import { bindPushToTalk, type CommandsApi, type RuntimeMessageApi } from "../src/shortcut.js";
 
 /**
  * Extension background service worker.
  *
- * Owns the shared plumbing and the voice loop:
+ * Every command the user gives — typed, spoken, or a button — goes through one
+ * path: the agent loop (`createAgentRuntime` → `runBrain`). The model plans, calls
+ * the page tools through this worker's bridge to the content script, and reports
+ * each step so the thinking bubble shows what is happening.
  *
- *   Ctrl+Space  → start dictation; the page shows what you are saying live
- *   Ctrl+Space  → stop; the transcript goes to the model, and the answer is
- *                 spoken (natural voice) + shown on the avatar.
+ * Two rules live here rather than in the prompt, because a prompt is not a
+ * security boundary:
  *
- * The model is whatever the user configured in Settings — any OpenAI-compatible
- * source. Page reading and speech happen in the content script, so no host
- * permission is needed beyond the provider origin the user grants on save.
+ * 1. **The model cannot submit.** It has no such tool. When a run fills a form,
+ *    this worker raises a confirmation and the *user* presses Submit — only then
+ *    does the user-gesture path call the page's submit control.
+ * 2. **Page text reaches the model fenced.** It is read through the Action
+ *    Engine, which taints the session and wraps it as untrusted DATA. We never
+ *    inline raw page text into a prompt here.
+ *
+ * Ctrl+Space drives dictation: press to listen, press again to send the
+ * transcript to the same command path.
  */
 const bus = createBus({ source: "background" });
+
+/* --- settings ------------------------------------------------------------- */
 
 async function readSettings(): Promise<ProviderSettings> {
   try {
@@ -35,53 +47,85 @@ async function readSettings(): Promise<ProviderSettings> {
   }
 }
 
-/** Build a provider from the user's settings (or throw a readable reason). */
-function buildProvider(settings: ProviderSettings) {
-  const preset = presetById(settings.presetId);
-  return createOpenAICompatibleProvider({
-    id: settings.presetId,
-    label: preset?.label ?? settings.presetId,
-    baseURL: settings.baseUrl,
-    apiKey: settings.apiKey.trim() || undefined,
-    model: settings.model,
-    sttModel: settings.sttModel || undefined,
-  });
-}
-
-/** The companion's voice: short, plain, spoken out loud. */
-const PERSONA = [
-  "You are DIGGY, a friendly female browser companion that lives in the corner of the page.",
-  "Answer conversationally and briefly: one or two short sentences, plain language,",
-  "no markdown, no lists, no emoji. If you do not know, say so plainly.",
-].join(" ");
-
 /** `sidePanel` is a valid MV3 API but missing from WXT 0.19 browser typings. */
 interface SidePanelApi {
-  setPanelBehavior(options: { openPanelOnActionClick?: boolean }): Promise<void>;
+  setPanelBehavior(options: { openPanelOnClick?: boolean }): Promise<void>;
 }
 
 function getSidePanel(): SidePanelApi | undefined {
   return (browser as unknown as { sidePanel?: SidePanelApi }).sidePanel;
 }
 
-/* --- talking to the page ------------------------------------------------- */
+/* --- talking to the page -------------------------------------------------- */
 
-async function sendToTab(message: unknown): Promise<void> {
+async function activeTabId(): Promise<number | undefined> {
   try {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id != null) await browser.tabs.sendMessage(tab.id, message);
+    return tab?.id ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function sendToTab(message: unknown): Promise<void> {
+  const tabId = await activeTabId();
+  if (tabId == null) return;
+  try {
+    await browser.tabs.sendMessage(tabId, message);
   } catch {
     // No active tab, or no content script in it.
   }
 }
 
+/** The bridge the agent runtime uses to reach the Action Engine in the page. */
+const sendToPage: SendToPage = async (message: unknown) => {
+  const tabId = await activeTabId();
+  if (tabId == null) throw new Error("No page is open.");
+  return browser.tabs.sendMessage(tabId, message);
+};
+
 function toTab(payload: { action: "say" | "status" | "play"; text?: string }): Promise<void> {
   return sendToTab({ type: "diggy:avatar", ...payload });
+}
+
+/** Push a message to the side panel (background `sendMessage` excludes itself). */
+function broadcast(message: unknown): void {
+  void browser.runtime.sendMessage(message).catch(() => undefined);
 }
 
 async function setStatus(text: string): Promise<void> {
   bus.emit(BusEvents.AvatarStatus, { text });
   await toTab({ action: "status", text });
+}
+
+/* --- progress + confirmation ---------------------------------------------- */
+
+/** The id the panel keys the current run's line on, so steps replace each other. */
+let runId = 0;
+/** The submit offer currently on screen, if any. */
+let pendingSubmit: string | null = null;
+
+function progress(id: number, text: string): void {
+  void toTab({ action: "status", text });
+  broadcast({ type: "diggy:progress", id: `run_${id}`, text, priority: 1, style: "thought" });
+}
+
+function offerSubmit(id: number): void {
+  pendingSubmit = `submit_${id}`;
+  const confirmation = {
+    id: pendingSubmit,
+    title: "The form is filled in",
+    detail: "Nothing has been sent. Press Submit and I'll press it for you.",
+    confirmLabel: "Submit now",
+    denyLabel: "Not yet",
+  };
+  broadcast({ type: "diggy:confirmation", confirmation });
+  void toTab({ action: "status", text: "Form ready — press Submit when you want it sent." });
+}
+
+function clearSubmit(): void {
+  pendingSubmit = null;
+  broadcast({ type: "diggy:confirmation", confirmation: null });
 }
 
 /* --- dictation (Ctrl+Space toggle, live transcript) ---------------------- */
@@ -115,10 +159,10 @@ async function finishDictation(): Promise<void> {
     await toTab({ action: "status", text: "I didn't catch that — Ctrl+Space and try again." });
     return;
   }
-  await respond(text);
+  await runGoal(text);
 }
 
-/** Ctrl+Space drives this: press → listen, press again → answer. */
+/** Ctrl+Space drives this: press → listen, press again → act. */
 const dictateHost = {
   get state(): string {
     return dictation.active ? "listening" : "idle";
@@ -128,132 +172,136 @@ const dictateHost = {
   toggle: () => (dictation.active ? stopDictation() : startDictation()),
 };
 
-/* --- answering ----------------------------------------------------------- */
+/* --- the command path ----------------------------------------------------- */
 
-/** Ask the model and speak + show the answer. */
-async function respond(prompt: string): Promise<void> {
+async function buildRuntime(context?: string): Promise<AgentRuntime | null> {
   const settings = await readSettings();
   if (!settingsReady(settings)) {
-    await toTab({ action: "status", text: "Add your API key in DIGGY settings to chat." });
-    return;
-  }
-
-  await setStatus(VOICE_STATUS.thinking);
-
-  let reply: string;
-  try {
-    const provider = buildProvider(settings);
-    const result = await provider.chat({
-      messages: [
-        { role: "system", content: PERSONA },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.3,
-      maxTokens: 320,
+    await toTab({
+      action: "status",
+      text: "Add your API key in DIGGY settings — I need a model to think with.",
     });
-    reply = result.text.trim() || "I'm not sure how to answer that.";
-  } catch (error) {
-    reply = `Sorry, I could not reach the model. ${error instanceof Error ? error.message : ""}`.trim();
-  }
-
-  await setStatus(VOICE_STATUS.speaking);
-  await toTab({ action: "say", text: reply });
-  await setStatus("");
-}
-
-/* --- dashboard actions --------------------------------------------------- */
-
-/** Page content, read through the content script (already injected). */
-async function readPage(): Promise<{ text: string; url: string; title: string } | null> {
-  try {
-    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id == null) return null;
-    const page = (await browser.tabs.sendMessage(tab.id, { type: "diggy:read" })) as
-      | { text: string; url: string; title: string }
-      | undefined;
-    return page ?? null;
-  } catch {
     return null;
   }
+  const fallback = await readFallback();
+  return createAgentRuntime({
+    model: registryFromSettings(settings, fallback),
+    send: sendToPage,
+    onProgress: (line) => progress(runId, line),
+    onNotify: async (title, message) => {
+      await toTab({ action: "say", text: message ? `${title}. ${message}` : title });
+    },
+    ...(context ? { context } : {}),
+  });
 }
 
-const ASSIST_PROMPTS: Record<string, string> = {
-  summarize: "Summarise this page in three to five short sentences.",
-  explain: "Explain what this page is about, in plain language.",
-  extract: "Extract the most important facts, dates and numbers from this page.",
-  repository: "Analyse this repository page: what it is, its stack, and how active it looks.",
-  opportunities: "List any deadlines, eligibility rules or opportunities on this page.",
-};
-
-/** Read the current page and answer a fixed question about it. */
-async function assist(intent: string): Promise<void> {
-  const settings = await readSettings();
-  if (!settingsReady(settings)) {
-    await toTab({ action: "status", text: "Add your API key in DIGGY settings." });
-    return;
-  }
-
-  await setStatus(VOICE_STATUS.thinking);
-  const page = await readPage();
-  const question = ASSIST_PROMPTS[intent] ?? "Help me with this page.";
-  const context = page ? `Page: ${page.title} — ${page.url}\n\n${page.text}` : "(No page content.)";
-
-  let reply: string;
+/** The page the user is looking at, as context (not as content). */
+async function pageContext(): Promise<string | undefined> {
+  const tabId = await activeTabId();
+  if (tabId == null) return undefined;
   try {
-    const provider = buildProvider(settings);
-    const result = await provider.chat({
-      messages: [
-        { role: "system", content: PERSONA },
-        { role: "user", content: `${question}\n\n${context}` },
-      ],
-      temperature: 0.3,
-      maxTokens: 420,
-    });
-    reply = result.text.trim() || "I could not read that page.";
+    const page = (await browser.tabs.sendMessage(tabId, { type: "diggy:read" })) as
+      | { url: string; title: string }
+      | undefined;
+    if (!page?.url) return undefined;
+    return [
+      "# The page the user is on",
+      `- Title: ${page.title || "(untitled)"}`,
+      `- URL: ${page.url}`,
+      "Read it with the page tools rather than assuming what it says.",
+    ].join("\n");
+  } catch {
+    return undefined;
+  }
+}
+
+/** Run one goal through the agent loop and report the outcome. */
+async function runGoal(goal: string, context?: string): Promise<void> {
+  const runtime = await buildRuntime(context);
+  if (!runtime) return;
+
+  const id = (runId += 1);
+  clearSubmit();
+  await setStatus(VOICE_STATUS.thinking);
+
+  let spoken: string;
+  try {
+    const result = await runtime.run(goal);
+    spoken =
+      result.text ||
+      (result.status === "budget-exceeded"
+        ? result.continueMessage ?? "I ran out of steps. Tell me to continue."
+        : "I finished, but I'm not sure what to say about it.");
+
+    if (result.status === "error") {
+      spoken = `I hit a problem: ${result.error ?? "the model did not answer"}`;
+    }
+    if (result.filledForm) offerSubmit(id);
   } catch (error) {
-    reply = `Sorry, I could not reach the model. ${error instanceof Error ? error.message : ""}`.trim();
+    spoken = `Sorry — something went wrong. ${error instanceof Error ? error.message : ""}`.trim();
   }
 
   await setStatus(VOICE_STATUS.speaking);
-  await toTab({ action: "say", text: reply });
+  await toTab({ action: "say", text: spoken });
   await setStatus("");
 }
 
-/** Remember the current page as something to watch. */
-async function track(): Promise<void> {
-  const page = await readPage();
-  if (!page) {
-    await toTab({ action: "status", text: "Open a page first, then track it." });
+/**
+ * Press the page's submit control for the user.
+ *
+ * Reachable only from the panel's user-gesture message, and only for the
+ * confirmation currently on screen — a stale or forged id does nothing.
+ */
+async function confirmSubmit(id: string | undefined): Promise<void> {
+  if (!pendingSubmit || id !== pendingSubmit) {
+    await toTab({ action: "status", text: "That confirmation has expired." });
     return;
   }
-  try {
-    const stored = await browser.storage.local.get("diggy:watches");
-    const watches = (stored["diggy:watches"] as unknown[] | undefined) ?? [];
-    watches.unshift({ url: page.url, title: page.title, addedAt: Date.now() });
-    await browser.storage.local.set({ "diggy:watches": watches.slice(0, 50) });
-  } catch {
-    // Storage unavailable — the acknowledgement below still tells the user.
-  }
-  await toTab({ action: "status", text: `Tracking: ${page.title || page.url}` });
+  clearSubmit();
+  const runtime = await buildRuntime();
+  if (!runtime) return;
+
+  const outcome = await runtime.submit();
+  const spoken = outcome.ok
+    ? `Sent it — I pressed “${outcome.label ?? "Submit"}”.`
+    : `I couldn't submit it: ${outcome.error ?? "no submit button found"}`;
+  await toTab({ action: "say", text: spoken });
 }
 
-/** A button (or the composer) in the side panel asked for something. */
-async function handleAction(intent: string | undefined, text?: string): Promise<void> {
+/** Fixed questions behind the dashboard's quick buttons. */
+const ASSIST_GOALS: Record<string, string> = {
+  summarize: "Read this page and summarise it in three to five short sentences.",
+  explain: "Read this page and explain what it is about, in plain language.",
+  extract: "Read this page and pull out the most important facts, dates and numbers.",
+  repository: "Read this repository page: what it is, its stack, and how active it looks.",
+  opportunities: "Read this page and list any deadlines, eligibility rules or opportunities.",
+  track: "Watch this page so I am told as soon as something on it changes.",
+};
+
+/** A button or the composer in the side panel asked for something. */
+async function handleCommand(intent: string | undefined, text?: string): Promise<void> {
   if (!intent) return;
+
   if (intent === "voice") {
     await dictateHost.toggle();
     return;
   }
-  if (intent === "track") {
-    await track();
+  if (intent === "confirm") {
+    await confirmSubmit(text);
     return;
   }
-  if (intent === "ask") {
-    const prompt = (text ?? "").trim();
-    if (prompt) await respond(prompt);
+  if (intent === "deny") {
+    clearSubmit();
     return;
   }
-  await assist(intent);
+
+  const goal =
+    intent === "ask"
+      ? (text ?? "").trim()
+      : ASSIST_GOALS[intent] ?? ((text ?? "").trim() || intent);
+
+  if (!goal) return;
+  await runGoal(goal, await pageContext());
 }
 
 export default defineBackground(() => {
@@ -263,7 +311,7 @@ export default defineBackground(() => {
     const sidePanel = getSidePanel();
     if (!sidePanel) return;
     void sidePanel
-      .setPanelBehavior({ openPanelOnActionClick: true })
+      .setPanelBehavior({ openPanelOnClick: true })
       .catch((error: unknown) => console.error("[diggy] side panel behavior failed", error));
   });
 
@@ -274,23 +322,28 @@ export default defineBackground(() => {
   });
 
   browser.runtime.onMessage.addListener((raw: unknown) => {
-    const message = raw as { type?: string; intent?: string; text?: string; final?: boolean } | undefined;
+    const message = raw as
+      | { type?: string; intent?: string; text?: string; confirmationId?: string }
+      | undefined;
+    if (!message) return undefined;
 
-    if (message?.type === "diggy:action") {
-      void handleAction(message.intent, message.text);
+    // The side panel's command channel. (The Action Engine's own messages use
+    // `diggy:action` and are handled in the content script, not here.)
+    if (message.type === "diggy:command") {
+      void handleCommand(message.intent, message.text ?? message.confirmationId);
       return undefined;
     }
     // Live dictation: show what the user is saying, keep the settled text.
-    if (message?.type === "diggy:dictate-interim" && typeof message.text === "string") {
+    if (message.type === "diggy:dictate-interim" && typeof message.text === "string") {
       dictation.interim = message.text;
       void toTab({ action: "status", text: `🎤 ${message.text}` });
       return undefined;
     }
-    if (message?.type === "diggy:dictate-final" && typeof message.text === "string") {
+    if (message.type === "diggy:dictate-final" && typeof message.text === "string") {
       dictation.final = message.text;
       return undefined;
     }
-    if (message?.type === "diggy:dictate-end") {
+    if (message.type === "diggy:dictate-end") {
       void finishDictation();
       return undefined;
     }
