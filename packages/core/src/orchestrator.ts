@@ -140,6 +140,11 @@ export interface RunBrainOptions {
   maxContextTokens?: number;
   /** Injected summariser for context compaction. */
   summarize?: (rendered: string) => string | Promise<string>;
+  /**
+   * Fired for each tool call **before** it runs, so a host can say what is about
+   * to happen ("Filling 14 fields…") rather than only reporting afterwards.
+   */
+  onToolCall?: (call: ToolCall, stepIndex: number) => void;
   onStep?: (step: AgentStep) => void;
 }
 
@@ -284,6 +289,7 @@ export async function runBrain(options: RunBrainOptions): Promise<RunBrainResult
 
       const observations: Observation[] = [];
       for (const call of result.toolCalls) {
+        safeOnToolCall(options.onToolCall, call, step);
         const observation = await runTool(toolMap.get(call.name), call, step, options.signal);
         observations.push(observation);
         messages.push({
@@ -343,6 +349,18 @@ async function runTool(
 function safeOnStep(onStep: RunBrainOptions["onStep"], step: AgentStep): void {
   try {
     onStep?.(step);
+  } catch {
+    // An observer must never break the run.
+  }
+}
+
+function safeOnToolCall(
+  onToolCall: RunBrainOptions["onToolCall"],
+  call: ToolCall,
+  stepIndex: number,
+): void {
+  try {
+    onToolCall?.(call, stepIndex);
   } catch {
     // An observer must never break the run.
   }

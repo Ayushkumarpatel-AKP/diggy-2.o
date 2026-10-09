@@ -17,7 +17,12 @@
  * - **Tools** — {@link ToolRegistry}, browser-use-style `RegisteredTool`s.
  * - **Plan-before-act** — {@link buildPlan}, {@link runPlan}, {@link isSubmitStep}.
  * - **Playbooks** — {@link PlaybookRecorder}, {@link Playbook}, {@link replayPlaybook}.
- * - **Host glue** — {@link createActionHost}, {@link createActionListener}.
+ * - **Host glue** — {@link createActionHost}, {@link createActionListener},
+ *   {@link createToolHost}, {@link createToolListener}.
+ * - **Agent bridge** — {@link toAgentTool}, {@link registryToAgentTools} (the
+ *   Action Engine's tools as the agent loop's `AgentTool`).
+ * - **User-initiated submit** — {@link findSubmitControl}, {@link performUserSubmit}
+ *   (never a tool; only reachable from a real user gesture).
  *
  * ## The never-auto-submit rule
  * A click or `Enter` on a submit/send/delete/purchase control is classified as
@@ -44,6 +49,9 @@ export * from './plan.js';
 export * from './playbook.js';
 export * from './action-api.js';
 export * from './host.js';
+export * from './tool-host.js';
+export * from './tool-adapter.js';
+export * from './user-submit.js';
 
 import { createActionAPI } from './action-api.js';
 import type { ActionEngine } from './action-api.js';
