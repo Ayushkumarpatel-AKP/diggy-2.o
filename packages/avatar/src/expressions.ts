@@ -46,7 +46,11 @@ export type ExpressionPresetName =
   | "confused"
   | "smug"
   | "sleepy"
-  | "excited";
+  | "excited"
+  // VRM-only presets (the VRM renderer reads names straight from the animation
+  // catalogue, so these carry no morph weights).
+  | "neutral"
+  | "relaxed";
 
 /** Preset influences — ported 1:1 from `app.js` `expressionPresets`. */
 export const EXPRESSION_PRESETS: Record<ExpressionPresetName, AvatarExpression> = {
@@ -60,6 +64,8 @@ export const EXPRESSION_PRESETS: Record<ExpressionPresetName, AvatarExpression> 
   smug: { Smug: 0.9, Smile: 0.3 },
   sleepy: { Sad: 0.35, Sad2: 0.2, Blink: 0.75, Down: 0.25 },
   excited: { Smile: 0.95, Smile2: 0.7, Surprised: 0.35, Up: 0.25 },
+  neutral: {},
+  relaxed: { Smile: 0.2 },
 };
 
 /** Every preset name, in a stable order. */
@@ -74,6 +80,8 @@ export const EXPRESSION_PRESET_NAMES: readonly ExpressionPresetName[] = [
   "smug",
   "sleepy",
   "excited",
+  "neutral",
+  "relaxed",
 ];
 
 /**

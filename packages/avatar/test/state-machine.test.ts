@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AvatarState } from "@diggy/shared";
 
-import { AVATAR_CLIPS } from "../src/clips.js";
+import { AVATAR_ANIMATIONS } from "../src/animations.js";
 import {
   AVATAR_STATES,
   AvatarStateMachine,
@@ -40,7 +40,7 @@ describe("the avatar state machine", () => {
   });
 
   it("maps every state to a real clip and a 0.2–0.35s cross-fade", () => {
-    const clipIds = new Set(AVATAR_CLIPS.map((clip) => clip.id));
+    const clipIds = new Set(AVATAR_ANIMATIONS.map((animation) => animation.id));
     for (const state of AVATAR_STATES) {
       const profile = STATE_PROFILES[state];
       expect(profile, `profile for ${state}`).toBeDefined();
@@ -53,29 +53,33 @@ describe("the avatar state machine", () => {
     }
   });
 
-  it("realises the exact clip mapping from the brief", () => {
-    expect(clipIdForState("idle")).toBe("standing-idle");
-    expect(clipIdForState("walk")).toBe("walking");
-    expect(clipIdForState("happy")).toBe("happy-walk");
-    expect(clipIdForState("celebration")).toBe("clapping");
+  it("maps the states onto the shipped VRMA animations", () => {
+    expect(clipIdForState("idle")).toBe("relax");
+    expect(clipIdForState("listening")).toBe("lookaround");
+    expect(clipIdForState("thinking")).toBe("thinking");
+    expect(clipIdForState("speaking")).toBe("blush");
+    expect(clipIdForState("happy")).toBe("blush");
     expect(clipIdForState("success")).toBe("clapping");
-    expect(clipIdForState("warning")).toBe("angry-point");
-    expect(clipIdForState("listening")).toBe("standing-greeting");
-    expect(clipIdForState("thinking")).toBe("looking");
-    expect(clipIdForState("speaking")).toBe("looking");
+    expect(clipIdForState("celebration")).toBe("jump");
+    expect(clipIdForState("warning")).toBe("surprised");
+    expect(clipIdForState("sleep")).toBe("sleepy");
+    expect(clipIdForState("exit")).toBe("goodbye");
   });
 
-  it("loads all 8 shipped clips (brief says 9; disk ships 8)", () => {
-    expect(AVATAR_CLIPS).toHaveLength(8);
+  it("ships all 11 VRMA animations", () => {
+    expect(AVATAR_ANIMATIONS).toHaveLength(11);
+    for (const animation of AVATAR_ANIMATIONS) {
+      expect(animation.file.endsWith(".vrma"), animation.file).toBe(true);
+    }
   });
 });
 
 describe("missing clips degrade without throwing", () => {
-  it("falls back to standing-idle when the preferred clip is absent", () => {
-    expect(resolveClip("celebration", ["walking", "standing-idle"])).toBe("standing-idle");
-    expect(resolveClip("warning", new Set(["standing-idle", "walking"]))).toBe("standing-idle");
+  it("falls back to relax when the preferred animation is absent", () => {
+    expect(resolveClip("celebration", ["blush", "relax"])).toBe("relax");
+    expect(resolveClip("warning", new Set(["relax", "thinking"]))).toBe("relax");
     // The fallback itself must also be absent to get null.
-    expect(resolveClip("celebration", ["walking"])).toBeNull();
+    expect(resolveClip("celebration", ["blush"])).toBeNull();
   });
 
   it("returns null (never throws) when nothing is available", () => {

@@ -13,7 +13,7 @@
  */
 import type { AvatarState } from "@diggy/shared";
 
-import { CLIP_FALLBACKS } from "./clips.js";
+import { ANIMATION_FALLBACKS } from "./animations.js";
 import type { ExpressionPresetName } from "./expressions.js";
 
 /** Cross-fade clamp (seconds) — matches the brief's 0.2–0.35s window. */
@@ -87,23 +87,24 @@ export const STATE_PRIORITY: Record<AvatarState, number> = {
 };
 
 /**
- * Per-state profiles. The clip choices follow the brief:
- * idle→Standing Idle · walk→Walking · happy→Happy Walk · celebration/success→Clapping ·
- * warning→Angry Point · listening→Standing Greeting · thinking/speaking→Looking,
- * with `blink`/`breathing` expressed procedurally over Standing Idle.
+ * Per-state profiles. The clip ids are `@diggy/avatar` animation ids (see
+ * `animations.ts`), not file names: idle→Relax · listening→LookAround ·
+ * thinking→Thinking · speaking/happy→Blush · success→Clapping ·
+ * celebration→Jump · warning→Surprised · sleep→Sleepy · exit→Goodbye, with
+ * `blink`/`breathing` expressed procedurally over Relax.
  */
 export const STATE_PROFILES: Record<AvatarState, AvatarStateProfile> = {
   idle: {
-    clip: "standing-idle",
+    clip: "relax",
     priority: STATE_PRIORITY.idle,
     crossFade: 0.35,
-    expression: "smug",
+    expression: "relaxed",
     procedural: ["breath", "blink"],
     autoReturn: false,
     label: "Idle",
   },
   blink: {
-    clip: "standing-idle",
+    clip: "relax",
     priority: STATE_PRIORITY.blink,
     crossFade: 0.2,
     expression: null,
@@ -112,7 +113,7 @@ export const STATE_PROFILES: Record<AvatarState, AvatarStateProfile> = {
     label: "Blink",
   },
   breathing: {
-    clip: "standing-idle",
+    clip: "relax",
     priority: STATE_PRIORITY.breathing,
     crossFade: 0.35,
     expression: null,
@@ -121,25 +122,25 @@ export const STATE_PROFILES: Record<AvatarState, AvatarStateProfile> = {
     label: "Breathing",
   },
   listening: {
-    clip: "standing-greeting",
+    clip: "lookaround",
     priority: STATE_PRIORITY.listening,
     crossFade: 0.3,
-    expression: "happy",
+    expression: "neutral",
     procedural: ["blink"],
     autoReturn: true,
     label: "Listening",
   },
   thinking: {
-    clip: "looking",
+    clip: "thinking",
     priority: STATE_PRIORITY.thinking,
     crossFade: 0.3,
-    expression: "confused",
+    expression: "neutral",
     procedural: ["blink"],
     autoReturn: true,
     label: "Thinking",
   },
   speaking: {
-    clip: "looking",
+    clip: "blush",
     priority: STATE_PRIORITY.speaking,
     crossFade: 0.25,
     expression: "happy",
@@ -148,19 +149,19 @@ export const STATE_PROFILES: Record<AvatarState, AvatarStateProfile> = {
     label: "Speaking",
   },
   walk: {
-    clip: "walking",
+    clip: "relax",
     priority: STATE_PRIORITY.walk,
     crossFade: 0.28,
-    expression: "happy",
+    expression: "neutral",
     procedural: ["breath"],
     autoReturn: false,
     label: "Walking",
   },
   happy: {
-    clip: "happy-walk",
+    clip: "blush",
     priority: STATE_PRIORITY.happy,
     crossFade: 0.25,
-    expression: "excited",
+    expression: "happy",
     procedural: ["blink"],
     autoReturn: true,
     label: "Happy",
@@ -175,35 +176,35 @@ export const STATE_PROFILES: Record<AvatarState, AvatarStateProfile> = {
     label: "Success",
   },
   warning: {
-    clip: "angry-point",
+    clip: "surprised",
     priority: STATE_PRIORITY.warning,
     crossFade: 0.22,
-    expression: "angry",
+    expression: "surprised",
     procedural: [],
     autoReturn: true,
     label: "Warning",
   },
   sleep: {
-    clip: "standing-idle",
+    clip: "sleepy",
     priority: STATE_PRIORITY.sleep,
     crossFade: 0.35,
-    expression: "sleepy",
+    expression: "relaxed",
     procedural: ["breath"],
     autoReturn: false,
     label: "Sleep",
   },
   celebration: {
-    clip: "clapping",
+    clip: "jump",
     priority: STATE_PRIORITY.celebration,
     crossFade: 0.2,
-    expression: "excited",
+    expression: "happy",
     procedural: ["blink"],
     autoReturn: true,
     label: "Celebration",
   },
   // --- lifecycle + idle ambience ------------------------------------------
   entry: {
-    clip: "standing-greeting",
+    clip: "relax",
     priority: STATE_PRIORITY.entry,
     crossFade: 0.28,
     expression: "happy",
@@ -212,16 +213,16 @@ export const STATE_PROFILES: Record<AvatarState, AvatarStateProfile> = {
     label: "Greeting",
   },
   stretch: {
-    clip: "arm-stretching",
+    clip: "relax",
     priority: STATE_PRIORITY.stretch,
     crossFade: 0.3,
-    expression: "surprised",
+    expression: "relaxed",
     procedural: ["blink"],
     autoReturn: true,
     label: "Stretching",
   },
   exit: {
-    clip: "walking",
+    clip: "goodbye",
     priority: STATE_PRIORITY.exit,
     crossFade: 0.3,
     expression: "happy",
@@ -262,7 +263,7 @@ export function resolveClip(
 
   const set = available instanceof Set ? available : new Set(available);
   if (wanted && set.has(wanted)) return wanted;
-  for (const fallback of CLIP_FALLBACKS) {
+  for (const fallback of ANIMATION_FALLBACKS) {
     if (set.has(fallback)) return fallback;
   }
   return null;

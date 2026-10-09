@@ -11,7 +11,8 @@ avatar in the bottom-right corner and push-to-talk voice.
 
 - **Monorepo:** pnpm 9 + Turborepo, TypeScript 5.7 (strict, ESM/`NodeNext`).
 - **Extension:** WXT 0.19, Manifest V3, React 18, Tailwind 3.
-- **Avatar:** three.js + React Three Fiber, `FBXLoader` + `AnimationMixer` (FBX primary, VRM fallback).
+- **Avatar:** three.js + React Three Fiber, `@pixiv/three-vrm` + `@pixiv/three-vrm-animation`
+  (VRM 1.0 character + `.vrma` clips). See [`ANIMATIONS.md`](ANIMATIONS.md).
 - **AI:** provider-agnostic layer — Groq primary → NVIDIA NIM failover (OpenAI-compatible).
 - **Services:** Fastify (crawler, api) + SQLite; Crawlee + Playwright for crawling.
 
@@ -54,7 +55,9 @@ never in the extension bundle (see `.env.example`).
 
 ## Design & assets
 
-- Avatar: `diggy motion/Chiori.fbx` + 8 animation clips + 4 textures (also mirrored to `assets/avatar/`).
+- Avatar: `assets/avatar/diggy_U.vrm` + 11 animation clips in
+  `assets/avatar/animations/` (source: `vrm animation/`). The animation reference is
+  [`ANIMATIONS.md`](ANIMATIONS.md).
 - UI: `diggy motion/Diggy Pastel Productivity Dashboard.png` is the design source of truth; the logo is
   `Cheerful Golden D Mascot Logo.png`.
 

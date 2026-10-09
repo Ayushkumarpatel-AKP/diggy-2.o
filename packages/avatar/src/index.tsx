@@ -45,21 +45,18 @@ import type { AvatarAPI, AvatarCapabilityReport, AvatarState } from "@diggy/shar
 
 import { AvatarController } from "./controller.js";
 import type { AvatarLookAtTarget, AvatarRenderMode } from "./controller.js";
-import { FbxAvatar } from "./FbxAvatar.js";
 import { VrmAvatar } from "./VrmAvatar.js";
 
 // --- Re-exports of the pure core (the integration surface) -----------------
-export * from "./clips.js";
+export * from "./animations.js";
 export * from "./state-machine.js";
 export * from "./expressions.js";
 export * from "./procedural.js";
 export * from "./framing.js";
 export * from "./capability.js";
 export * from "./controller.js";
-export { FbxAvatar } from "./FbxAvatar.js";
-export type { FbxAvatarProps, FbxLookAt } from "./FbxAvatar.js";
 export { VrmAvatar } from "./VrmAvatar.js";
-export type { VrmAvatarProps } from "./VrmAvatar.js";
+export type { VrmAvatarProps, VrmLookAt } from "./VrmAvatar.js";
 
 /** Which screen corner the avatar is pinned to. */
 export type AvatarCorner = "bottom-right" | "bottom-left" | "top-right" | "top-left";
@@ -75,10 +72,10 @@ export interface AvatarHandle extends AvatarAPI {
 }
 
 export interface AvatarProps {
-  /** Base path where the FBX assets live. Defaults to `/assets/avatar`. */
+  /** Base path where the VRM model + `animations/` live. Defaults to `/assets/avatar`. */
   assetBase?: string;
-  /** VRM fallback URL. Defaults to `${assetBase}/AvatarSample_I.vrm`. */
-  vrmUrl?: string;
+  /** VRM model file name. Defaults to `diggy_U.vrm`. */
+  modelFile?: string;
   /** Target frame rate (brief: ≤30). Defaults to 30. */
   fps?: number;
   /** Screen corner to pin to. Defaults to `bottom-left`. */
@@ -144,10 +141,9 @@ const CORNER_OFFSET = 16;
 const CAMERA_TARGET_Y = 1.15;
 const CAMERA_DISTANCE = 4.6;
 
-/** Entrance timing: walk in → turn + stretch → greet → settle into idle. */
-const WALK_IN_MS = 1500;
-const STRETCH_MS = 2600;
-const GREET_MS = 3000;
+/** Entrance timing: the VRM walk-in runs first, then a happy beat, then idle. */
+const WALK_IN_MS = 4200;
+const GREET_MS = 2600;
 
 function verticalEdge(corner: AvatarCorner, offset: number): CSSProperties {
   return corner.includes("top") ? { top: offset } : { bottom: offset };
@@ -158,21 +154,19 @@ function horizontalEdge(corner: AvatarCorner, offset: number): CSSProperties {
 }
 
 /**
- * The living avatar, pinned bottom-right of the page, rendering only inside its
+ * The living avatar, pinned bottom-left of the page, rendering only inside its
  * own box (`pointer-events: none` everywhere else) so it never blocks content.
  *
- * FBX is primary; if the base `Chiori.fbx` fails, the controller switches to the
- * `AvatarSample_I.vrm` fallback automatically.
+ * `diggy_U.vrm` is the character; its clips come from `assets/avatar/animations`.
  */
 export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
   {
     assetBase = "/assets/avatar",
-    vrmUrl,
+    modelFile = "diggy_U.vrm",
     fps = 30,
     corner = "bottom-left",
     size = 200,
     intro = true,
-    walkIn = true,
     stretchEveryMs = 45_000,
     controller,
     onCapability,
@@ -192,36 +186,24 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
     onModeChange?.(snapshot.mode, snapshot.fallbackReason);
   }, [snapshot.mode, snapshot.fallbackReason, onModeChange]);
 
-  // The entrance is scripted: walk in from the edge, turn to face the viewer,
-  // stretch, greet, then settle into the idle loop. It runs once the renderer
-  // reports ready, so every clip is loaded when it plays.
-  const [walking, setWalking] = useState(walkIn);
+  // The entrance is scripted and runs once the character reports ready: the VRM
+  // walks in (procedural, `entry`), gives a happy beat, then settles into idle.
   const introRef = useRef(false);
   const timersRef = useRef<number[]>([]);
 
   const runIntro = useCallback(() => {
     if (introRef.current) return;
     introRef.current = true;
-
-    if (!walkIn) {
-      if (intro) active.playNow("entry");
-      return;
-    }
+    if (!intro) return;
 
     const at = (ms: number, run: () => void): void => {
       timersRef.current.push(window.setTimeout(run, ms));
     };
 
-    active.playNow("walk");
-    at(WALK_IN_MS, () => {
-      setWalking(false);
-      active.playNow("stretch");
-    });
-    at(WALK_IN_MS + STRETCH_MS, () => {
-      if (intro) active.playNow("entry");
-    });
-    at(WALK_IN_MS + STRETCH_MS + GREET_MS, () => active.playNow("idle"));
-  }, [active, intro, walkIn]);
+    active.playNow("entry");
+    at(WALK_IN_MS, () => active.playNow("happy"));
+    at(WALK_IN_MS + GREET_MS, () => active.playNow("idle"));
+  }, [active, intro]);
 
   useEffect(
     () => () => {
@@ -240,9 +222,10 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
     [active, onCapability, runIntro],
   );
 
-  const handleFbxError = useCallback(
+  const handleRenderError = useCallback(
     (error: unknown) => {
-      active.useVrmFallback(error);
+      const message = error instanceof Error ? error.message : String(error ?? "unknown error");
+      active.status(`Character failed to load: ${message}`);
     },
     [active],
   );
@@ -283,13 +266,6 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
   if (!snapshot.visible) return null;
 
   const boxHeight = Math.round(size * 1.5);
-  // Off-screen start for the walk-in; the CSS transition slides her into the corner.
-  const approach = Math.round(size * 1.9);
-  const horizontal: CSSProperties = walking
-    ? corner.includes("right")
-      ? { right: -approach }
-      : { left: -approach }
-    : horizontalEdge(corner, CORNER_OFFSET);
 
   return (
     <div
@@ -298,12 +274,12 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
         zIndex: 2147483000,
         pointerEvents: "none",
         ...verticalEdge(corner, CORNER_OFFSET),
-        ...horizontal,
-        transition:
-          "left 1.5s cubic-bezier(0.22, 1, 0.36, 1), right 1.5s cubic-bezier(0.22, 1, 0.36, 1)",
+        ...horizontalEdge(corner, CORNER_OFFSET),
       }}
       aria-hidden
       data-diggy-avatar-root=""
+      data-diggy-state={snapshot.state}
+      data-diggy-clips={snapshot.capability?.clips.join(",") ?? ""}
     >
       {snapshot.status ? (
         <div
@@ -348,26 +324,15 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
             <pointLight position={[-2, 2, -2]} intensity={0.7} />
             <FrameDriver onFrame={active.tick} />
             <Suspense fallback={null}>
-              {snapshot.mode === "fbx" ? (
-                <FbxAvatar
-                  assetBase={assetBase}
-                  state={snapshot.state}
-                  expression={snapshot.expression}
-                  lookAt={snapshot.lookAt}
-                  fps={fps}
-                  onReady={handleCapability}
-                  onError={handleFbxError}
-                />
-              ) : (
-                <VrmAvatar
-                  url={vrmUrl ?? `${assetBase.replace(/\/+$/, "")}/AvatarSample_I.vrm`}
-                  state={snapshot.state}
-                  expression={snapshot.expression}
-                  lookAt={snapshot.lookAt as AvatarLookAtTarget | null}
-                  fps={fps}
-                  onReady={handleCapability}
-                />
-              )}
+              <VrmAvatar
+                assetBase={assetBase}
+                modelFile={modelFile}
+                state={snapshot.state}
+                lookAt={snapshot.lookAt as AvatarLookAtTarget | null}
+                fps={fps}
+                onReady={handleCapability}
+                onError={handleRenderError}
+              />
             </Suspense>
           </Canvas>
         </RendererBoundary>

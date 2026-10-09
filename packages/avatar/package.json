@@ -20,6 +20,7 @@
   "dependencies": {
     "@diggy/shared": "workspace:*",
     "@pixiv/three-vrm": "^3.4.0",
+    "@pixiv/three-vrm-animation": "^3.4.0",
     "@react-three/fiber": "^8.17.10",
     "three": "^0.170.0"
   },
