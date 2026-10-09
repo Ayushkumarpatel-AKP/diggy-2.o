@@ -458,9 +458,12 @@ export function VrmAvatar({
         const currentValue = manager.getValue(name) ?? 0;
         manager.setValue(name, THREE.MathUtils.damp(currentValue, goal, 8, step));
       }
-      if (profile.procedural.includes("blink")) {
-        manager.setValue("blink", Math.max(manager.getValue("blink") ?? 0, blinkWeight(elapsedRef.current)));
-      }
+      // Blink is a hard 0→1→0 curve. Never latch it: `Math.max` with the previous
+      // value would freeze the eyes shut after the very first blink.
+      manager.setValue(
+        "blink",
+        profile.procedural.includes("blink") ? blinkWeight(elapsedRef.current) : 0,
+      );
     }
 
     // Gentle breath while standing (never fights a clip or the walk-in).
