@@ -33,6 +33,14 @@ describe("insertByPriority", () => {
     insertByPriority(original, item("b", 2));
     expect(original.map((q) => q.id)).toEqual(["a"]);
   });
+
+  it("replaces a queued item when the id repeats", () => {
+    let queue: StatusItem[] = [];
+    queue = insertByPriority(queue, item("live", 1));
+    queue = insertByPriority(queue, { ...item("live", 1), text: "step 2" });
+    expect(queue).toHaveLength(1);
+    expect(queue[0]?.text).toBe("step 2");
+  });
 });
 
 describe("truncateStatus", () => {

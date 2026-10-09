@@ -11,8 +11,13 @@
     "postinstall": "wxt prepare"
   },
   "dependencies": {
+    "@diggy/activity": "workspace:*",
     "@diggy/avatar": "workspace:*",
     "@diggy/core": "workspace:*",
+    "@diggy/monitor": "workspace:*",
+    "@diggy/page-agent": "workspace:*",
+    "@diggy/policy": "workspace:*",
+    "@diggy/reminders": "workspace:*",
     "@diggy/shared": "workspace:*",
     "@diggy/ui": "workspace:*",
     "@diggy/voice": "workspace:*",

@@ -3,7 +3,8 @@
  *
  * // INTERFACE FOR INTEGRATION
  * interface HomeScreenProps { onNavigate(id: NavTabId): void; onOpenPalette(): void;
- *   onCommand(label: string, intent?: string): void; state?: ScreenState; preview?: boolean }
+ *   onCommand(label: string, intent?: string): void; state?: ScreenState; preview?: boolean;
+ *   metrics?: MetricData[]; alerts?: AlertData[] }
  * // END INTERFACE FOR INTEGRATION
  */
 import type { NavTabId } from "@diggy/shared";
@@ -17,7 +18,14 @@ import { QuickAction } from "../../primitives/QuickAction.js";
 import { SearchField } from "../../primitives/Input.js";
 import { formatRelative, SHORTCUT_MODIFIER } from "../format.js";
 import { StateBlock, PreviewBadge, type ScreenState } from "../ScreenState.js";
-import { sampleAlerts, sampleMetrics, sampleQuickCommands, sampleUser } from "../sampleData.js";
+import {
+  sampleAlerts,
+  sampleMetrics,
+  sampleQuickCommands,
+  sampleUser,
+  type AlertData,
+  type MetricData,
+} from "../sampleData.js";
 
 export interface HomeScreenProps {
   onNavigate: (id: NavTabId) => void;
@@ -25,6 +33,8 @@ export interface HomeScreenProps {
   onCommand: (label: string, intent?: string) => void;
   state?: ScreenState;
   preview?: boolean;
+  metrics?: MetricData[];
+  alerts?: AlertData[];
 }
 
 /** Each metric tile is a shortcut to the screen that owns it. */
@@ -41,6 +51,8 @@ export function HomeScreen({
   onCommand,
   state = "ready",
   preview = true,
+  metrics = sampleMetrics,
+  alerts = sampleAlerts,
 }: HomeScreenProps) {
   const retry = () => onCommand("Retry loading home");
 
@@ -94,7 +106,7 @@ export function HomeScreen({
       ) : (
         <>
           <div className="dg-tiles">
-            {sampleMetrics.map((metric) => (
+            {metrics.map((metric) => (
               <MetricTile
                 key={metric.id}
                 icon={metric.icon}
@@ -123,10 +135,10 @@ export function HomeScreen({
                 </button>
               }
             >
-              {sampleAlerts.length === 0 ? (
+              {alerts.length === 0 ? (
                 <StateBlock state="empty" title="No alerts yet" />
               ) : (
-                sampleAlerts.map((alert) => (
+                alerts.map((alert) => (
                   <AlertRow
                     key={alert.id}
                     icon={alert.icon}

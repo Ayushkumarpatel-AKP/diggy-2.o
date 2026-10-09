@@ -17,7 +17,8 @@
  * AvatarChip, IconButton, QuickAction, StatusBubble
  * //  hooks
  * insertByPriority, truncateStatus, type StatusItem, type StatusPriority, type BubbleStyle
- * useHotkey, usePopOut, useStatusQueue
+ * useHotkey, usePopOut, useStatusQueue, type StatusUpdate
+ * type LiveStatus, type PendingConfirmation
  * //  app
  * Dashboard (the 7-tab surface), Sidebar, ScreenHeader, CommandPalette
  * HomeScreen, AssistantScreen, MonitorScreen, ActionsScreen, IntegrationsScreen,

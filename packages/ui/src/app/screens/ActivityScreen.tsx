@@ -3,9 +3,11 @@
  *
  * // INTERFACE FOR INTEGRATION
  * interface ActivityScreenProps { onCommand(label: string, intent?: string): void;
- *   state?: ScreenState; preview?: boolean }
+ *   state?: ScreenState; preview?: boolean; events?: ActivityEvent[] }
  * // END INTERFACE FOR INTEGRATION
  */
+import type { ActivityEvent } from "@diggy/shared";
+
 import { Icon } from "../../Icon.js";
 import { Panel } from "../../primitives/Card.js";
 import { formatClock } from "../format.js";
@@ -17,12 +19,14 @@ export interface ActivityScreenProps {
   onCommand: (label: string, intent?: string) => void;
   state?: ScreenState;
   preview?: boolean;
+  events?: ActivityEvent[];
 }
 
 export function ActivityScreen({
   onCommand,
   state = "ready",
   preview = true,
+  events = sampleActivity,
 }: ActivityScreenProps) {
   return (
     <>
@@ -59,11 +63,11 @@ export function ActivityScreen({
             }
             onRetry={() => onCommand("Retry activity")}
           />
-        ) : sampleActivity.length === 0 ? (
+        ) : events.length === 0 ? (
           <StateBlock state="empty" icon="activity" title="No activity yet" />
         ) : (
           <div className="dg-timeline">
-            {sampleActivity.map((event) => (
+            {events.map((event) => (
               <div key={event.id} className="dg-tl">
                 <div className="dg-tl__time">{formatClock(event.at)}</div>
                 <div className="dg-tl__rail">

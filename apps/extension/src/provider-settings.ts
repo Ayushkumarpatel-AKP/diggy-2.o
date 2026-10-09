@@ -5,7 +5,8 @@
  * provider the user chose). The background builds a `Provider` from this at call
  * time, so changing the key/source takes effect immediately.
  */
-import { createOpenAICompatibleProvider, createRegistry, type FailoverRegistry, type Provider } from "@diggy/core";
+import { createOpenAICompatibleProvider, createRegistry, type FailoverRegistry } from "@diggy/core";
+import type { Provider } from "@diggy/shared";
 
 export interface ProviderSettings {
   /** Which preset the values came from (drives the UI + defaults). */

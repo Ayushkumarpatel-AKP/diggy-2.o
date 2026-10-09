@@ -17,6 +17,7 @@ export default defineConfig({
       "sidePanel",
       "offscreen",
       "activeTab",
+      "identity",
     ],
     // Host access is requested at runtime, never bundled as a required permission.
     optional_host_permissions: ["<all_urls>"],

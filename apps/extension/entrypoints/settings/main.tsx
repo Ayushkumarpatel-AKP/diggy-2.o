@@ -13,6 +13,15 @@ import {
   settingsReady,
   type ProviderSettings,
 } from "../../src/provider-settings.js";
+import {
+  connectGoogle,
+  disconnectGoogle,
+  googleRedirectUrl,
+  googleStatus,
+  type GoogleStatus,
+} from "../../src/google.js";
+
+const GOOGLE_CLIENT_ID_KEY = "diggy:google-client-id";
 
 const label: CSSProperties = {
   display: "block",
@@ -84,12 +93,67 @@ function Field({
 function Settings() {
   const [settings, setSettings] = useState<ProviderSettings>(() => normalizeSettings(undefined));
   const [status, setStatus] = useState("");
+  const [googleClientId, setGoogleClientId] = useState("");
+  const [google, setGoogle] = useState<GoogleStatus>({ connected: false });
+  const [googleLine, setGoogleLine] = useState("");
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const [redirectUri, setRedirectUri] = useState("");
 
   useEffect(() => {
     void browser.storage.local.get(SETTINGS_KEY).then((stored) => {
       setSettings(normalizeSettings(stored[SETTINGS_KEY]));
     });
+    setRedirectUri(googleRedirectUrl());
+    void browser.storage.local.get(GOOGLE_CLIENT_ID_KEY).then((stored) => {
+      const value = stored[GOOGLE_CLIENT_ID_KEY];
+      if (typeof value === "string") setGoogleClientId(value);
+    });
+    void googleStatus().then(setGoogle);
   }, []);
+
+  function setGoogleClient(value: string): void {
+    setGoogleClientId(value);
+    setGoogleLine("");
+    void browser.storage.local.set({ [GOOGLE_CLIENT_ID_KEY]: value });
+  }
+
+  async function connect(): Promise<void> {
+    const clientId = googleClientId.trim();
+    if (!clientId) return;
+    setGoogleBusy(true);
+    setGoogleLine("Connecting…");
+    try {
+      const next = await connectGoogle(clientId);
+      setGoogle(next);
+      setGoogleLine(next.email ? `Connected as ${next.email}` : "Connected to Google.");
+    } catch (error) {
+      setGoogleLine(error instanceof Error ? error.message : "Could not connect to Google.");
+    } finally {
+      setGoogleBusy(false);
+    }
+  }
+
+  async function disconnect(): Promise<void> {
+    setGoogleBusy(true);
+    try {
+      await disconnectGoogle();
+      setGoogle({ connected: false });
+      setGoogleLine("Disconnected.");
+    } catch (error) {
+      setGoogleLine(error instanceof Error ? error.message : "Could not disconnect from Google.");
+    } finally {
+      setGoogleBusy(false);
+    }
+  }
+
+  async function copyRedirect(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(redirectUri);
+      setGoogleLine("Redirect URI copied.");
+    } catch {
+      setGoogleLine("Could not copy — select the field and copy it manually.");
+    }
+  }
 
   const preset = presetById(settings.presetId);
   const ready = settingsReady(settings);
@@ -221,6 +285,131 @@ function Settings() {
               {status || (ready ? "Ready" : "Add an API key to start chatting")}
             </span>
           </div>
+        </section>
+
+        <section style={card}>
+          <h2 style={{ margin: "0 0 4px", fontSize: 15, color: tokens.color.ink }}>Google &amp; Apps</h2>
+          <p style={{ margin: "0 0 14px", color: tokens.color.muted, fontSize: 12 }}>
+            Connect Gmail and Calendar with your own OAuth client. The client id is stored only on
+            this device and no client secret is used.
+          </p>
+
+          <Field
+            id="google-client"
+            title="Client ID"
+            value={googleClientId}
+            placeholder="xxxxxxxx.apps.googleusercontent.com"
+            hint="Paste the OAuth client id from Google Cloud Console."
+            onChange={setGoogleClient}
+          />
+
+          <div style={{ marginTop: 14 }}>
+            <label style={label} htmlFor="google-redirect">
+              Redirect URI (register this exactly)
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                id="google-redirect"
+                style={input}
+                value={redirectUri}
+                readOnly
+                onFocus={(event) => event.currentTarget.select()}
+              />
+              <button
+                type="button"
+                onClick={() => void copyRedirect()}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: tokens.radius.md,
+                  border: `1px solid ${tokens.color.line}`,
+                  background: tokens.color.surface,
+                  color: tokens.color.ink,
+                  font: `600 12px ${tokens.font.sans}`,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 18 }}>
+            <button
+              type="button"
+              disabled={googleBusy || !googleClientId.trim()}
+              onClick={() => void connect()}
+              style={{
+                padding: "10px 18px",
+                borderRadius: tokens.radius.pill,
+                border: `1px solid ${tokens.color.primary}`,
+                background: tokens.color.primary,
+                color: tokens.color.primaryInk,
+                font: `600 13px ${tokens.font.sans}`,
+                cursor: googleBusy || !googleClientId.trim() ? "not-allowed" : "pointer",
+                opacity: googleBusy || !googleClientId.trim() ? 0.5 : 1,
+              }}
+            >
+              {googleBusy ? "Working…" : google.connected ? "Reconnect Google" : "Connect Google"}
+            </button>
+            {google.connected ? (
+              <button
+                type="button"
+                disabled={googleBusy}
+                onClick={() => void disconnect()}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: tokens.radius.pill,
+                  border: `1px solid ${tokens.color.line}`,
+                  background: tokens.color.surface,
+                  color: tokens.color.ink,
+                  font: `600 13px ${tokens.font.sans}`,
+                  cursor: googleBusy ? "not-allowed" : "pointer",
+                }}
+              >
+                Disconnect
+              </button>
+            ) : null}
+            <span
+              style={{
+                fontSize: 12,
+                color: google.connected ? tokens.color.success : tokens.color.muted,
+              }}
+            >
+              {googleLine ||
+                (google.connected
+                  ? `Connected${google.email ? ` as ${google.email}` : ""}`
+                  : "Not connected")}
+            </span>
+          </div>
+
+          <ol
+            style={{
+              margin: "16px 0 0",
+              paddingLeft: 18,
+              color: tokens.color.inkSoft,
+              fontSize: 12,
+              lineHeight: 1.7,
+            }}
+          >
+            <li>Create a Google Cloud project.</li>
+            <li>
+              Enable the <strong>Gmail API</strong> and <strong>Google Calendar API</strong>.
+            </li>
+            <li>
+              OAuth consent screen: <strong>External</strong>, <strong>Testing</strong>, add your
+              own account as a <strong>Test user</strong>.
+            </li>
+            <li>
+              Credentials → <strong>Create OAuth client ID</strong> → type{" "}
+              <strong>Web application</strong>.
+            </li>
+            <li>Add the redirect URI above, then paste the client id here.</li>
+          </ol>
+          <p style={{ margin: "8px 0 0", color: tokens.color.muted, fontSize: 11 }}>
+            Gmail is a restricted scope; in Testing mode it works without app review, for the test
+            users you add.
+          </p>
         </section>
 
         <section style={card}>

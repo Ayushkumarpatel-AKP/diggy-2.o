@@ -17,22 +17,36 @@
  *   onAsk?(text: string): void;            // composer → extension runtime answers
  *   preview?: boolean;                     // sample data is labelled when true (default)
  *   screenStates?: Partial<Record<NavTabId, ScreenState>>;
+ *   liveStatus?: { id: string; text: string; priority?: StatusPriority; style?: BubbleStyle };
+ *   pendingConfirmation?: PendingConfirmation;
+ *   onStatusPush?: (push: (update: StatusUpdate) => void) => void;
+ *   metrics?: MetricData[]; alerts?: AlertData[]; watches?: WatchRow[];
+ *   events?: ActivityEvent[]; integrations?: IntegrationRow[];
  * }
  * function Dashboard(props: DashboardProps): JSX.Element;
  * // END INTERFACE FOR INTEGRATION
  */
-import { useCallback, useMemo, useState } from "react";
-import { NAV_TABS, type AvatarAPI, type NavTabId } from "@diggy/shared";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { NAV_TABS, type ActivityEvent, type AvatarAPI, type NavTabId } from "@diggy/shared";
 
 import { Icon, type IconName } from "../Icon.js";
+import { Button } from "../primitives/Button.js";
 import { Composer } from "../primitives/Composer.js";
 import { StatusBubble } from "../primitives/StatusBubble.js";
 import { useHotkey } from "../hooks/useHotkey.js";
 import { usePopOut } from "../hooks/usePopOut.js";
-import { useStatusQueue } from "../hooks/useStatusQueue.js";
+import { useStatusQueue, type StatusUpdate } from "../hooks/useStatusQueue.js";
+import type { BubbleStyle, StatusPriority } from "../hooks/statusQueue.js";
 import { CommandPalette, type PaletteCommand } from "./CommandPalette.js";
 import { Sidebar } from "./Sidebar.js";
-import { sampleQuickCommands, sampleUser } from "./sampleData.js";
+import {
+  sampleQuickCommands,
+  sampleUser,
+  type AlertData,
+  type IntegrationRow,
+  type MetricData,
+  type WatchRow,
+} from "./sampleData.js";
 import type { ScreenState } from "./ScreenState.js";
 import { ActionsScreen } from "./screens/ActionsScreen.js";
 import { ActivityScreen } from "./screens/ActivityScreen.js";
@@ -41,6 +55,23 @@ import { HomeScreen } from "./screens/HomeScreen.js";
 import { IntegrationsScreen } from "./screens/IntegrationsScreen.js";
 import { MonitorScreen } from "./screens/MonitorScreen.js";
 import { VaultScreen } from "./screens/VaultScreen.js";
+
+export interface PendingConfirmation {
+  id: string;
+  title: string;
+  detail?: string;
+  confirmLabel?: string;
+  denyLabel?: string;
+  onConfirm: () => void;
+  onDeny?: () => void;
+}
+
+export interface LiveStatus {
+  id: string;
+  text: string;
+  priority?: StatusPriority;
+  style?: BubbleStyle;
+}
 
 export interface DashboardProps {
   tab?: NavTabId;
@@ -56,6 +87,17 @@ export interface DashboardProps {
   preview?: boolean;
   /** Optional per-screen state so empty / loading / error are real, not implied. */
   screenStates?: Partial<Record<NavTabId, ScreenState>>;
+  /** A background line pushed into the status bubble; a repeated `id` replaces the line. */
+  liveStatus?: LiveStatus;
+  /** When present the dock asks for approval instead of showing status. */
+  pendingConfirmation?: PendingConfirmation;
+  /** Called once on mount with the queue's `push`, for the background to drive status. */
+  onStatusPush?: (push: (update: StatusUpdate) => void) => void;
+  metrics?: MetricData[];
+  alerts?: AlertData[];
+  watches?: WatchRow[];
+  events?: ActivityEvent[];
+  integrations?: IntegrationRow[];
 }
 
 /** High-level intents the dashboard forwards to the extension runtime. */
@@ -92,6 +134,14 @@ export function Dashboard({
   onAsk,
   preview = true,
   screenStates,
+  liveStatus,
+  pendingConfirmation,
+  onStatusPush,
+  metrics,
+  alerts,
+  watches,
+  events,
+  integrations,
 }: DashboardProps) {
   const [internalTab, setInternalTab] = useState<NavTabId>("home");
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -99,6 +149,21 @@ export function Dashboard({
   const activeTab = tab ?? internalTab;
   const status = useStatusQueue();
   const popOut = usePopOut({ elementId: "dg-popout-root", width: 420, height: 760 });
+  const onStatusPushRef = useRef(onStatusPush);
+
+  useEffect(() => {
+    onStatusPushRef.current?.(status.push);
+  }, [status.push]);
+
+  useEffect(() => {
+    if (!liveStatus) return;
+    status.push({
+      id: liveStatus.id,
+      text: liveStatus.text,
+      priority: liveStatus.priority,
+      style: liveStatus.style,
+    });
+  }, [liveStatus?.id, liveStatus?.text, liveStatus?.priority, liveStatus?.style, status.push]);
 
   const stateFor = useCallback(
     (id: NavTabId): ScreenState => screenStates?.[id] ?? "ready",
@@ -228,6 +293,8 @@ export function Dashboard({
                 onCommand={handleCommand}
                 state={stateFor("home")}
                 preview={preview}
+                metrics={metrics}
+                alerts={alerts}
               />
             ) : null}
             {activeTab === "assistant" ? (
@@ -242,6 +309,7 @@ export function Dashboard({
                 onCommand={handleCommand}
                 state={stateFor("monitor")}
                 preview={preview}
+                watches={watches}
               />
             ) : null}
             {activeTab === "actions" ? (
@@ -256,6 +324,7 @@ export function Dashboard({
                 onCommand={handleCommand}
                 state={stateFor("integrations")}
                 preview={preview}
+                integrations={integrations}
               />
             ) : null}
             {activeTab === "vault" ? (
@@ -270,6 +339,7 @@ export function Dashboard({
                 onCommand={handleCommand}
                 state={stateFor("activity")}
                 preview={preview}
+                events={events}
               />
             ) : null}
           </div>
@@ -285,15 +355,40 @@ export function Dashboard({
         </main>
       </div>
 
-      <div className="dg-statusdock">
-        <StatusBubble
-          text={status.current?.text ?? "Ready — press Ctrl+Space to talk, or ask me anything."}
-          priority={status.current?.priority ?? 0}
-          variant={status.current?.style ?? "thought"}
-          collapsed={status.collapsed}
-          onToggleCollapse={status.toggleCollapse}
-          api={statusApi}
-        />
+      <div className={pendingConfirmation ? "dg-statusdock dg-statusdock--confirm" : "dg-statusdock"}>
+        {pendingConfirmation ? (
+          <StatusBubble
+            text={pendingConfirmation.title}
+            priority={2}
+            variant="speech"
+            typing={false}
+            api={statusApi}
+            actions={
+              <>
+                {pendingConfirmation.detail ? (
+                  <span className="dg-bubble__detail">{pendingConfirmation.detail}</span>
+                ) : null}
+                <Button variant="primary" size="sm" onClick={pendingConfirmation.onConfirm}>
+                  {pendingConfirmation.confirmLabel ?? "Approve"}
+                </Button>
+                {pendingConfirmation.onDeny ? (
+                  <Button variant="ghost" size="sm" onClick={pendingConfirmation.onDeny}>
+                    {pendingConfirmation.denyLabel ?? "Cancel"}
+                  </Button>
+                ) : null}
+              </>
+            }
+          />
+        ) : (
+          <StatusBubble
+            text={status.current?.text ?? "Ready — press Ctrl+Space to talk, or ask me anything."}
+            priority={status.current?.priority ?? 0}
+            variant={status.current?.style ?? "thought"}
+            collapsed={status.collapsed}
+            onToggleCollapse={status.toggleCollapse}
+            api={statusApi}
+          />
+        )}
       </div>
 
       <CommandPalette

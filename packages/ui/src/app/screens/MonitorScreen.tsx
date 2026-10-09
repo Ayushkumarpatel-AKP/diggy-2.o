@@ -3,7 +3,7 @@
  *
  * // INTERFACE FOR INTEGRATION
  * interface MonitorScreenProps { onCommand(label: string, intent?: string): void;
- *   state?: ScreenState; preview?: boolean }
+ *   state?: ScreenState; preview?: boolean; watches?: WatchRow[] }
  * // END INTERFACE FOR INTEGRATION
  */
 import { useState } from "react";
@@ -17,12 +17,13 @@ import { Pill } from "../../primitives/Pill.js";
 import { Tabs } from "../../primitives/Tabs.js";
 import { ScreenHeader } from "../ScreenHeader.js";
 import { StateBlock, PreviewBadge, type ScreenState } from "../ScreenState.js";
-import { sampleWatches } from "../sampleData.js";
+import { sampleWatches, type WatchRow } from "../sampleData.js";
 
 export interface MonitorScreenProps {
   onCommand: (label: string, intent?: string) => void;
   state?: ScreenState;
   preview?: boolean;
+  watches?: WatchRow[];
 }
 
 const MONITOR_TABS = [
@@ -43,9 +44,10 @@ export function MonitorScreen({
   onCommand,
   state = "ready",
   preview = true,
+  watches = sampleWatches,
 }: MonitorScreenProps) {
   const [tab, setTab] = useState("websites");
-  const rows = tab === "websites" ? sampleWatches : [];
+  const rows = tab === "websites" ? watches : [];
 
   return (
     <>

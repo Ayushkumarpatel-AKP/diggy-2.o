@@ -32,9 +32,10 @@ export const PRIORITY_DOT: Record<StatusPriority, string> = {
   3: "dg-dot--danger",
 };
 
-/** Insert keeping descending priority; equal priorities stay in arrival order. */
+/** Insert keeping descending priority; equal priorities stay in arrival order.
+ *  A repeated `id` replaces the item already queued under that id instead of stacking. */
 export function insertByPriority(queue: readonly StatusItem[], item: StatusItem): StatusItem[] {
-  const next = [...queue];
+  const next = queue.filter((existing) => existing.id !== item.id);
   const index = next.findIndex((existing) => existing.priority < item.priority);
   next.splice(index === -1 ? next.length : index, 0, item);
   return next;

@@ -13,6 +13,7 @@
  *   collapsed?: boolean; onToggleCollapse?: () => void;
  *   avatar?: ReactNode;                      // avatar renderer slot (packages/avatar)
  *   api?: Pick<AvatarAPI, "status">;         // consumes AvatarAPI.status
+ *   actions?: ReactNode;                     // buttons rendered under the text row
  * }
  * // END INTERFACE FOR INTEGRATION
  */
@@ -32,6 +33,7 @@ export interface StatusBubbleProps {
   onToggleCollapse?: () => void;
   avatar?: ReactNode;
   api?: Pick<AvatarAPI, "status">;
+  actions?: ReactNode;
   className?: string;
 }
 
@@ -45,6 +47,7 @@ export function StatusBubble({
   onToggleCollapse,
   avatar,
   api,
+  actions,
   className,
 }: StatusBubbleProps) {
   const [revealed, setRevealed] = useState(typing ? 0 : text.length);
@@ -101,6 +104,7 @@ export function StatusBubble({
         <span className={isTyping ? "dg-bubble__text dg-typewriter" : "dg-bubble__text"}>
           {shown}
         </span>
+        {actions ? <div className="dg-bubble__actions">{actions}</div> : null}
         {onToggleCollapse ? (
           <button
             type="button"

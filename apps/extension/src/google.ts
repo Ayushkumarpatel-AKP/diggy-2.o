@@ -150,7 +150,11 @@ export async function connectGoogle(clientId: string): Promise<GoogleStatus> {
   const redirected = new URL(resultUrl);
   const code = redirected.searchParams.get('code');
   const error = redirected.searchParams.get('error');
+  const returnedState = redirected.searchParams.get('state');
   if (error) throw new Error(`Google returned: ${error}`);
+  if (returnedState !== state) {
+    throw new Error('Google sign-in could not be verified. Please try connecting again.');
+  }
   if (!code) throw new Error('No authorization code came back from Google.');
 
   const response = await fetch(TOKEN_ENDPOINT, {

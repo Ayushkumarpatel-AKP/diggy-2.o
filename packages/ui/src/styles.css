@@ -983,6 +983,7 @@
   min-height: 34px;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -1029,6 +1030,34 @@
   height: 7px;
   border-radius: 50%;
   flex: 0 0 auto;
+}
+
+/* optional action row (e.g. approval buttons) tucked under the bubble text */
+.dg-bubble__actions {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.dg-bubble__detail {
+  flex-basis: 100%;
+  color: var(--dg-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+/* compact confirmation treatment on the status dock */
+.dg-statusdock--confirm .dg-bubble {
+  border-color: var(--dg-primary);
+  box-shadow: 0 6px 20px rgba(245, 179, 1, 0.28);
+}
+
+.dg-statusdock--confirm .dg-bubble__actions {
+  justify-content: flex-end;
 }
 
 /* -------------------------------------------------------------- composer */

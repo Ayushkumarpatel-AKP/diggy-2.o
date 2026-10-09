@@ -69,11 +69,14 @@ export function useStatusQueue(options: UseStatusQueueOptions = {}): UseStatusQu
         style: update.style ?? "thought",
         mood: update.mood,
       };
-      setMachine((prev) =>
-        prev.current
+      setMachine((prev) => {
+        if (prev.current?.id === item.id) {
+          return { current: item, queue: prev.queue };
+        }
+        return prev.current
           ? { current: prev.current, queue: insertByPriority(prev.queue, item) }
-          : { current: item, queue: prev.queue },
-      );
+          : { current: item, queue: prev.queue };
+      });
     },
     [],
   );

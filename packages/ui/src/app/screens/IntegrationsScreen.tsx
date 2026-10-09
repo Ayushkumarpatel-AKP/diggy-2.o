@@ -3,7 +3,7 @@
  *
  * // INTERFACE FOR INTEGRATION
  * interface IntegrationsScreenProps { onCommand(label: string, intent?: string): void;
- *   state?: ScreenState; preview?: boolean }
+ *   state?: ScreenState; preview?: boolean; integrations?: IntegrationRow[] }
  * // END INTERFACE FOR INTEGRATION
  */
 import { useState } from "react";
@@ -14,12 +14,13 @@ import { Pill } from "../../primitives/Pill.js";
 import { Tabs } from "../../primitives/Tabs.js";
 import { ScreenHeader } from "../ScreenHeader.js";
 import { StateBlock, PreviewBadge, type ScreenState } from "../ScreenState.js";
-import { sampleIntegrations } from "../sampleData.js";
+import { sampleIntegrations, type IntegrationRow } from "../sampleData.js";
 
 export interface IntegrationsScreenProps {
   onCommand: (label: string, intent?: string) => void;
   state?: ScreenState;
   preview?: boolean;
+  integrations?: IntegrationRow[];
 }
 
 const INTEGRATION_TABS = [
@@ -33,12 +34,13 @@ export function IntegrationsScreen({
   onCommand,
   state = "ready",
   preview = true,
+  integrations = sampleIntegrations,
 }: IntegrationsScreenProps) {
   const [tab, setTab] = useState("all");
   const rows =
     tab === "all"
-      ? sampleIntegrations
-      : sampleIntegrations.filter((item) => item.category.toLowerCase() === tab);
+      ? integrations
+      : integrations.filter((item) => item.category.toLowerCase() === tab);
 
   return (
     <>
