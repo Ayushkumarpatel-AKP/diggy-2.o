@@ -15,7 +15,7 @@ import { MetricTile } from "../../primitives/MetricTile.js";
 import { Panel } from "../../primitives/Card.js";
 import { QuickAction } from "../../primitives/QuickAction.js";
 import { SearchField } from "../../primitives/Input.js";
-import { formatRelative } from "../format.js";
+import { formatRelative, SHORTCUT_MODIFIER } from "../format.js";
 import { StateBlock, PreviewBadge, type ScreenState } from "../ScreenState.js";
 import { sampleAlerts, sampleMetrics, sampleQuickCommands, sampleUser } from "../sampleData.js";
 
@@ -47,7 +47,7 @@ export function HomeScreen({
   return (
     <>
       <div className="dg-homebar">
-        <SearchField onActivate={onOpenPalette} readOnly hint="⌘K" />
+        <SearchField onActivate={onOpenPalette} readOnly hint={`${SHORTCUT_MODIFIER}K`} />
         {preview ? <PreviewBadge /> : null}
       </div>
 
@@ -64,7 +64,7 @@ export function HomeScreen({
             Let&apos;s make today productive!
           </div>
           <div className="dg-hero__avatar">
-            {/* TEMP STUB — the FBX avatar renderer (packages/avatar) mounts here. */}
+            {/* The live avatar (packages/avatar) is mounted by the host page. */}
             <DiggyLogo size={64} />
           </div>
         </div>

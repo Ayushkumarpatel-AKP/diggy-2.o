@@ -287,7 +287,7 @@ export function Dashboard({
 
       <div className="dg-statusdock">
         <StatusBubble
-          text={status.current?.text ?? "Monitoring 12 websites — all calm."}
+          text={status.current?.text ?? "Ready — press Ctrl+Space to talk, or ask me anything."}
           priority={status.current?.priority ?? 0}
           variant={status.current?.style ?? "thought"}
           collapsed={status.collapsed}

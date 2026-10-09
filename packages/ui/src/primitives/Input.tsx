@@ -41,7 +41,7 @@ export function SearchField({
   value,
   onChange,
   placeholder = "Search or ask DIGGY…",
-  hint = "⌘K",
+  hint = "Ctrl K",
   onActivate,
   readOnly,
   className,

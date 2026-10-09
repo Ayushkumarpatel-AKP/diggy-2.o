@@ -9,6 +9,12 @@ export function compactNumber(value: number): string {
   return `${thousands >= 10 ? Math.round(thousands) : thousands.toFixed(1)}k`;
 }
 
+/** `⌘` on Apple hardware, `Ctrl` everywhere else — for shortcut hints. */
+export const SHORTCUT_MODIFIER =
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
+    ? "⌘"
+    : "Ctrl";
+
 /** `10:32 AM` from an epoch timestamp; deterministic per locale-independent clock. */
 export function formatClock(at: number): string {
   const date = new Date(at);

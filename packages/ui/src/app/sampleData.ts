@@ -1,29 +1,36 @@
 /**
- * Sample data for the design gallery — every shape is drawn from `@diggy/shared` contracts
- * so screens can be swapped to live engines without touching the UI.
+ * Screen data + the label/icon mappings the screens need.
  *
- * Shapes that have no contract yet are marked `TEMP STUB — blocked on <owner>`.
+ * **There is deliberately no demo content here.** Every list starts empty and is
+ * meant to be replaced by the live engines (monitor watches, activity log,
+ * vault profile, integrations catalog). Screens render their own empty state
+ * until real data arrives — see `app/ScreenState.tsx`.
+ *
+ * The `sample*` export names are kept only to avoid churning every screen; they
+ * are empty collections, not samples.
  */
-import type {
-  ActivityEvent,
-  MonitorKind,
-  ProfileSchema,
-  WatchSpec,
-} from "@diggy/shared";
+import type { ActivityEvent, MonitorKind, ProfileSchema, WatchSpec } from "@diggy/shared";
 
 import type { IconName } from "../Icon.js";
 import type { Tone } from "../theme.js";
 import type { Severity } from "../primitives/AlertRow.js";
-import { minutesAgo } from "./format.js";
 
-/** Home hero + greeting. */
+/** Time-of-day greeting — computed, never hardcoded to a person. */
+function greetingForHour(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+/** Home hero. No user identity is assumed until the profile is loaded. */
 export const sampleUser = {
-  initials: "AKP",
-  name: "Ayush Kumar Patel",
-  role: "Personal workspace",
-  greeting: "Good Evening, AKP",
+  initials: "",
+  name: "",
+  role: "",
+  greeting: greetingForHour(),
   subtitle: "Track what matters, automate the boring, and stay ahead.",
-} as const;
+};
 
 export interface MetricData {
   id: string;
@@ -34,11 +41,12 @@ export interface MetricData {
   sub?: { text: string; tone?: Tone };
 }
 
+/** Home metric tiles — counts come from the live engines, so start at zero. */
 export const sampleMetrics: MetricData[] = [
-  { id: "watch", icon: "globe", tone: "blue", value: 12, label: "Websites Monitoring" },
-  { id: "alerts", icon: "bell", tone: "pink", value: 3, label: "New Alerts", sub: { text: "2 urgent", tone: "danger" } },
-  { id: "actions", icon: "check", tone: "mint", value: 5, label: "Actions Completed" },
-  { id: "integrations", icon: "integrations", tone: "violet", value: 4, label: "Integrations Active" },
+  { id: "watch", icon: "globe", tone: "blue", value: 0, label: "Websites Monitoring" },
+  { id: "alerts", icon: "bell", tone: "pink", value: 0, label: "New Alerts" },
+  { id: "actions", icon: "check", tone: "mint", value: 0, label: "Actions Completed" },
+  { id: "integrations", icon: "integrations", tone: "violet", value: 0, label: "Integrations Active" },
 ];
 
 /** Home → Recent Alerts. */
@@ -53,50 +61,21 @@ export interface AlertData {
   severity: Severity;
 }
 
-export const sampleAlerts: AlertData[] = [
-  {
-    id: "alert_sih",
-    icon: "globe",
-    tone: "primary",
-    title: "SIH 2026 Results",
-    source: "sih.gov.in",
-    subtitle: "Results page updated",
-    at: minutesAgo(10),
-    severity: "high",
-  },
-  {
-    id: "alert_nasa",
-    icon: "globe",
-    tone: "blue",
-    title: "NASA Space Apps",
-    source: "spaceappschallenge.org",
-    subtitle: "Registrations are now open",
-    at: minutesAgo(120),
-    severity: "medium",
-  },
-  {
-    id: "alert_gh",
-    icon: "star",
-    tone: "violet",
-    title: "GitHub · AKP",
-    source: "github.com",
-    subtitle: "Your repository got 5 new stars",
-    at: minutesAgo(240),
-    severity: "info",
-  },
-];
-
-/** Home → Recent Alerts may show a GitHub repo row; keep the label shape explicit. */
+export const sampleAlerts: AlertData[] = [];
 
 export interface QuickCommand {
   id: string;
   icon: IconName;
   tone: Tone;
   label: string;
-  /** Sentinel passed to the page-agent / brain when wired. */
+  /** Sentinel passed to the runtime when the button is pressed. */
   intent: string;
 }
 
+/**
+ * Quick Commands — these are real product actions (each button performs work),
+ * not demo content, so they stay.
+ */
 export const sampleQuickCommands: QuickCommand[] = [
   { id: "track", icon: "globe", tone: "blue", label: "Track this site", intent: "monitor.track" },
   { id: "summarize", icon: "file", tone: "violet", label: "Summarize page", intent: "read.summarize" },
@@ -113,44 +92,7 @@ export interface WatchRow {
   active: boolean;
 }
 
-export const sampleWatches: WatchRow[] = [
-  {
-    spec: {
-      id: "watch_sih",
-      url: "https://sih.gov.in",
-      kind: "content_change",
-      intervalSec: 900,
-      createdAt: minutesAgo(60 * 24 * 6),
-    },
-    name: "SIH Results Portal",
-    tags: ["Keywords", "Content Change", "New Posts"],
-    active: true,
-  },
-  {
-    spec: {
-      id: "watch_nasa",
-      url: "https://www.spaceappschallenge.org",
-      kind: "registration_open",
-      intervalSec: 1800,
-      createdAt: minutesAgo(60 * 24 * 4),
-    },
-    name: "NASA Space Apps",
-    tags: ["Registration", "Deadlines", "New Posts"],
-    active: true,
-  },
-  {
-    spec: {
-      id: "watch_internshala",
-      url: "https://internshala.com",
-      kind: "new_post",
-      intervalSec: 3600,
-      createdAt: minutesAgo(60 * 24 * 2),
-    },
-    name: "Internshala",
-    tags: ["New Internships", "Deadlines"],
-    active: true,
-  },
-];
+export const sampleWatches: WatchRow[] = [];
 
 export const MONITOR_KIND_LABEL: Record<MonitorKind, string> = {
   content_change: "Content Change",
@@ -163,7 +105,7 @@ export const MONITOR_KIND_LABEL: Record<MonitorKind, string> = {
   custom: "Custom",
 };
 
-/** Actions screen rows. TEMP STUB — blocked on actions (`packages/page-agent`) history type. */
+/** Actions screen rows. */
 export type ActionStatus = "completed" | "scheduled" | "failed";
 
 export interface ActionLogRow {
@@ -176,15 +118,9 @@ export interface ActionLogRow {
   at: number;
 }
 
-export const sampleActionLog: ActionLogRow[] = [
-  { id: "act_1", icon: "edit", tone: "blue", title: "Filled Internship Form", subtitle: "Internshala · 14 fields", status: "completed", at: minutesAgo(78) },
-  { id: "act_2", icon: "file", tone: "violet", title: "Summarized PDF", subtitle: "Research Paper (12 pages)", status: "completed", at: minutesAgo(120) },
-  { id: "act_3", icon: "bell", tone: "primary", title: "Created Reminder", subtitle: "NASA deadline", status: "completed", at: minutesAgo(160) },
-  { id: "act_4", icon: "globe", tone: "mint", title: "Opened Website", subtitle: "Google Solution Challenge", status: "completed", at: minutesAgo(185) },
-  { id: "act_5", icon: "layers", tone: "pink", title: "Extracted Information", subtitle: "From SIH portal", status: "completed", at: minutesAgo(210) },
-];
+export const sampleActionLog: ActionLogRow[] = [];
 
-/** Integrations screen. TEMP STUB — blocked on integrations (`services/api`) catalog. */
+/** Integrations screen — the connectable catalog comes from `services/api`. */
 export interface IntegrationRow {
   id: string;
   name: string;
@@ -194,56 +130,13 @@ export interface IntegrationRow {
   status: "connected" | "connect";
 }
 
-export const sampleIntegrations: IntegrationRow[] = [
-  { id: "gmail", name: "Gmail", category: "Productivity", color: "#EA4335", mark: "M", status: "connect" },
-  { id: "calendar", name: "Calendar", category: "Productivity", color: "#4285F4", mark: "31", status: "connect" },
-  { id: "github", name: "GitHub", category: "Development", color: "#24292F", mark: "GH", status: "connected" },
-  { id: "notion", name: "Notion", category: "Productivity", color: "#111111", mark: "N", status: "connect" },
-  { id: "linkedin", name: "LinkedIn", category: "Social", color: "#0A66C2", mark: "in", status: "connect" },
-  { id: "youtube", name: "YouTube", category: "Social", color: "#FF0033", mark: "▶", status: "connect" },
-  { id: "leetcode", name: "LeetCode", category: "Development", color: "#F89F1B", mark: "LC", status: "connect" },
-];
+export const sampleIntegrations: IntegrationRow[] = [];
 
-/** Vault screen — locked fields carry tokens only, never plaintext. */
-export const sampleProfile: ProfileSchema = {
-  fullName: { key: "fullName", label: "Full Name", value: "Ayush Kumar Patel", visibility: "shared" },
-  email: { key: "email", label: "Email", value: "ayush@gmail.com", visibility: "shared" },
-  phone: { key: "phone", label: "Phone", value: "+91 98765 43210", visibility: "shared" },
-  location: { key: "location", label: "Location", value: "Raipur, Chhattisgarh", visibility: "shared" },
-  college: { key: "college", label: "College", value: "SSIPMT, CSE (AI)", visibility: "shared" },
-  degree: { key: "degree", label: "Degree", value: "B.Tech", visibility: "shared" },
-  semester: { key: "semester", label: "Semester", value: "7th", visibility: "shared" },
-  skills: {
-    key: "skills",
-    label: "Skills",
-    value: ["TypeScript", "React", "Python", "Node.js", "Playwright"],
-    visibility: "shared",
-  },
-  links: {
-    key: "links",
-    label: "Links",
-    value: {
-      LinkedIn: "linkedin.com/in/ayush",
-      GitHub: "github.com/AyushKumarPatel-AKP",
-    },
-    visibility: "shared",
-  },
-  resumeRef: { key: "resumeRef", label: "Resume", value: "resume-2026.pdf", visibility: "shared" },
-  custom: [
-    { key: "aadhaar", label: "Aadhaar", value: "{{LOCKED:aadhaar}}", visibility: "locked" },
-    { key: "github", label: "GitHub", value: "github.com/AyushKumarPatel-AKP", visibility: "shared" },
-  ],
-};
+/** Vault screen — filled from the encrypted profile once it is unlocked. */
+export const sampleProfile: ProfileSchema = {};
 
-/** Activity screen — canonical `ActivityEvent`s. */
-export const sampleActivity: ActivityEvent[] = [
-  { id: "ev_1", kind: "summary", title: "Page summarized", detail: "SIH Results", at: minutesAgo(24) },
-  { id: "ev_2", kind: "monitored", title: "Found 3 new hackathons", detail: "Based on your profile", at: minutesAgo(71) },
-  { id: "ev_3", kind: "filled_form", title: "Filled 8 fields on Internship form", detail: "Never auto-submitted — awaiting your review", at: minutesAgo(104) },
-  { id: "ev_4", kind: "integration", title: "Gmail: 1 important mail", detail: "From: noreply@diggy.app", at: minutesAgo(136) },
-  { id: "ev_5", kind: "integration", title: "GitHub: 3 new notifications", detail: "AyushKumarPatel-AKP", at: minutesAgo(161) },
-  { id: "ev_6", kind: "action", title: "Created a reminder", detail: "NASA deadline", at: minutesAgo(181) },
-];
+/** Activity screen — filled from the Activity Center log. */
+export const sampleActivity: ActivityEvent[] = [];
 
 export const ACTIVITY_ICON: Record<ActivityEvent["kind"], IconName> = {
   read_page: "eye",

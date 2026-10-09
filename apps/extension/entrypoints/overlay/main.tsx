@@ -14,9 +14,9 @@ function Overlay() {
   return (
     <div style={{ padding: 12, background: "transparent" }}>
       <StatusBubble
-        text="Monitoring sih.gov.in — the results page changed."
-        priority={2}
-        variant="speech"
+        text="Ready — press Ctrl+Space to talk."
+        priority={0}
+        variant="thought"
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed((value) => !value)}
       />
