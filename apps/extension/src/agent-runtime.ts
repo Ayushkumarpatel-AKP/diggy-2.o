@@ -16,7 +16,7 @@ import { buildUntrustedGuard } from "@diggy/policy";
 import type { ChatMessage } from "@diggy/shared";
 
 import { PROGRESS_THINKING, progressForToolCall } from "./agent-progress.js";
-import { createToolkit } from "./agent-tools.js";
+import { createToolkit, type ToolkitDeps } from "./agent-tools.js";
 import type { SendToPage, SubmitOutcome } from "./page-tools.js";
 
 /** Tools whose use means the run wrote into a form. */
@@ -32,7 +32,7 @@ const RUNTIME_RULES = [
   "- Finish with one or two short sentences, plain language, no markdown and no lists.",
 ].join("\n");
 
-export interface AgentRuntimeOptions {
+export interface AgentRuntimeOptions extends Omit<ToolkitDeps, "send" | "onNotify"> {
   /** The model or failover registry that answers chat requests. */
   model: BrainModel;
   /** Reaches the content script. */
@@ -85,6 +85,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     const toolkit = await createToolkit({
       send: options.send,
       onNotify: options.onNotify,
+      ...(options.search ? { search: options.search } : {}),
+      ...(options.fetchPage ? { fetchPage: options.fetchPage } : {}),
+      ...(options.watches ? { watches: options.watches } : {}),
+      ...(options.reminders ? { reminders: options.reminders } : {}),
+      ...(options.google ? { google: options.google } : {}),
     });
 
     safeProgress(options.onProgress, PROGRESS_THINKING);
