@@ -27,7 +27,13 @@
  * // END INTERFACE FOR INTEGRATION
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { NAV_TABS, type ActivityEvent, type AvatarAPI, type NavTabId } from "@diggy/shared";
+import {
+  NAV_TABS,
+  type ActivityEvent,
+  type AvatarAPI,
+  type NavTabId,
+  type ProfileSchema,
+} from "@diggy/shared";
 
 import { Icon, type IconName } from "../Icon.js";
 import { Button } from "../primitives/Button.js";
@@ -98,6 +104,20 @@ export interface DashboardProps {
   watches?: WatchRow[];
   events?: ActivityEvent[];
   integrations?: IntegrationRow[];
+  /**
+   * Vault state and handlers, forwarded straight to the Vault screen.
+   *
+   * The dashboard stays presentational: it never unlocks, creates or resolves a
+   * vault itself — the host supplies these.
+   */
+  vault?: {
+    status?: { exists: boolean; unlocked: boolean };
+    profile?: ProfileSchema | null;
+    onUnlock?: (passphrase: string) => void | Promise<void>;
+    onCreate?: (passphrase: string) => void | Promise<void>;
+    onLock?: () => void;
+    autoLockAt?: number;
+  };
 }
 
 /** High-level intents the dashboard forwards to the extension runtime. */
@@ -163,6 +183,7 @@ export function Dashboard({
   watches,
   events,
   integrations,
+  vault,
 }: DashboardProps) {
   const [internalTab, setInternalTab] = useState<NavTabId>("home");
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -362,6 +383,7 @@ export function Dashboard({
                 onCommand={handleCommand}
                 state={stateFor("vault")}
                 preview={preview}
+                {...(vault ?? {})}
               />
             ) : null}
             {activeTab === "activity" ? (

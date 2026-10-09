@@ -1,4 +1,5 @@
 import { BusEvents, createBus } from "@diggy/shared";
+import type { FailoverRegistry } from "@diggy/core";
 import { VOICE_STATUS } from "@diggy/voice";
 
 import {
@@ -12,6 +13,12 @@ import {
 import { createAgentRuntime, type AgentRuntime } from "../src/agent-runtime.js";
 import type { SendToPage } from "../src/page-tools.js";
 import { createUnifiedRuntime, type UnifiedRuntime } from "../src/unified-runtime.js";
+import { createChatHistory } from "../src/chat-history.js";
+import { cachedSearch, createTtlCache, createUsageLedger } from "../src/usage.js";
+import { createVaultRuntime } from "../src/vault-runtime.js";
+import { vaultTools } from "../src/vault-tools.js";
+import { emptyVaultData } from "@diggy/vault";
+import type { SearchOutcome } from "../src/search-web.js";
 import { bindPushToTalk, type CommandsApi, type RuntimeMessageApi } from "../src/shortcut.js";
 
 /**
@@ -47,6 +54,24 @@ const bus = createBus({ source: "background" });
  * never fire, which is exactly how they read as broken.
  */
 let runtime: UnifiedRuntime | null = null;
+
+/** Conversation history — what makes "and the next one" mean something. */
+const chat = createChatHistory();
+/** What the model calls are costing, and on which provider. */
+const usage = createUsageLedger();
+/** Identical searches inside five minutes are free. */
+const searchCache = createTtlCache<SearchOutcome>(5 * 60 * 1000);
+/** The encrypted profile DIGGY may answer from. */
+const vault = createVaultRuntime();
+
+/**
+ * Confirmations waiting on a button press, keyed by id.
+ *
+ * Two things use this one channel: the submit offer after a form is filled, and
+ * a vault lookup that needs the user's approval for one field. Keeping them on
+ * one channel means the panel has one thing to render and one thing to answer.
+ */
+const pendingApprovals = new Map<string, (approved: boolean) => void>();
 
 /* --- settings ------------------------------------------------------------- */
 
@@ -144,6 +169,39 @@ function clearSubmit(): void {
   broadcast({ type: "diggy:confirmation", confirmation: null });
 }
 
+let approvalSeq = 0;
+
+/**
+ * Ask the user to approve one action, and wait for the answer.
+ *
+ * Used for a vault lookup, where the whole point is that the model cannot
+ * release a locked field on its own. The promise only settles when the user
+ * presses a button, so a forgotten prompt cannot silently approve anything.
+ */
+function requestApproval(title: string, detail: string): Promise<boolean> {
+  const id = `approve_${(approvalSeq += 1)}`;
+  return new Promise<boolean>((resolve) => {
+    pendingApprovals.set(id, (approved) => {
+      pendingApprovals.delete(id);
+      broadcast({ type: "diggy:confirmation", confirmation: null });
+      resolve(approved);
+    });
+    broadcast({
+      type: "diggy:confirmation",
+      confirmation: { id, title, detail, confirmLabel: "Allow", denyLabel: "Not now" },
+    });
+    void toTab({ action: "status", text: title });
+  });
+}
+
+/** Answer a pending approval. Returns false when the id is not one. */
+function answerApproval(id: string, approved: boolean): boolean {
+  const resolve = pendingApprovals.get(id);
+  if (!resolve) return false;
+  resolve(approved);
+  return true;
+}
+
 /* --- dictation (Ctrl+Space toggle, live transcript) ---------------------- */
 
 const dictation = { active: false, interim: "", final: "" };
@@ -190,7 +248,14 @@ const dictateHost = {
 
 /* --- the command path ----------------------------------------------------- */
 
-async function buildRuntime(context?: string): Promise<AgentRuntime | null> {
+/** What a run needs: the agent, and the registry it bills against. */
+interface PreparedRun {
+  agent: AgentRuntime;
+  registry: FailoverRegistry;
+}
+
+/** Build the agent for one run. Returns null (with a spoken reason) when it cannot. */
+async function buildAgent(context?: string): Promise<PreparedRun | null> {
   const settings = await readSettings();
   if (!settingsReady(settings)) {
     await toTab({
@@ -199,19 +264,66 @@ async function buildRuntime(context?: string): Promise<AgentRuntime | null> {
     });
     return null;
   }
+
+  const deps = runtime?.toolDeps();
+  if (!deps) {
+    await toTab({ action: "status", text: "Still starting up — try that again in a moment." });
+    return null;
+  }
+
   const fallback = await readFallback();
-  return createAgentRuntime({
-    model: registryFromSettings(settings, fallback),
+  const registry = registryFromSettings(settings, fallback);
+  const agent = createAgentRuntime({
+    model: registry,
     send: sendToPage,
     onProgress: (line) => progress(runId, line),
     onNotify: async (title, message) => {
       await toTab({ action: "say", text: message ? `${title}. ${message}` : title });
     },
-    // The live engines: tracking, reminders, web search. Absent ones are simply
-    // not offered to the model.
-    ...(runtime ? runtime.toolDeps() : {}),
+    watches: deps.watches,
+    reminders: deps.reminders,
+    // A repeat search inside the TTL is free, which is the cheapest token saving
+    // available — a follow-up usually repeats the first question.
+    search: cachedSearch(searchCache, deps.search),
+    fetchPage: deps.fetchPage,
+    extraTools: vaultTools({
+      vault,
+      requestApproval: ({ label }) =>
+        requestApproval(
+          `Let DIGGY use “${label}”?`,
+          "Only for this request — nothing is saved or sent anywhere else.",
+        ),
+    }),
+    // Prior turns, so "and the next one" has a referent.
+    history: await chat.recent(),
     ...(context ? { context } : {}),
   });
+
+  return { agent, registry };
+}
+
+/**
+ * Bill the run against the ledger.
+ *
+ * The registry counts tokens and cost per provider already, and this registry is
+ * fresh for the run, so its metrics *are* this run's usage — which also means the
+ * readout shows when the fallback provider was the one actually used.
+ */
+async function recordUsage(registry: FailoverRegistry, model: string): Promise<void> {
+  try {
+    for (const metric of registry.allMetrics()) {
+      if (metric.successes === 0 && metric.promptTokens === 0 && metric.completionTokens === 0) continue;
+      usage.record({
+        provider: metric.providerId,
+        model,
+        promptTokens: metric.promptTokens,
+        completionTokens: metric.completionTokens,
+        costUsd: metric.costUsd,
+      });
+    }
+  } catch {
+    /* accounting must never break a command */
+  }
 }
 
 /** The page the user is looking at, as context (not as content). */
@@ -236,16 +348,17 @@ async function pageContext(): Promise<string | undefined> {
 
 /** Run one goal through the agent loop and report the outcome. */
 async function runGoal(goal: string, context?: string): Promise<void> {
-  const runtime = await buildRuntime(context);
-  if (!runtime) return;
+  const prepared = await buildAgent(context);
+  if (!prepared) return;
 
+  const settings = await readSettings();
   const id = (runId += 1);
   clearSubmit();
   await setStatus(VOICE_STATUS.thinking);
 
   let spoken: string;
   try {
-    const result = await runtime.run(goal);
+    const result = await prepared.agent.run(goal);
     spoken =
       result.text ||
       (result.status === "budget-exceeded"
@@ -260,9 +373,15 @@ async function runGoal(goal: string, context?: string): Promise<void> {
     spoken = `Sorry — something went wrong. ${error instanceof Error ? error.message : ""}`.trim();
   }
 
+  await recordUsage(prepared.registry, settings.model);
+  // Remember the exchange so the next command has context.
+  await chat.append(goal, spoken);
+
   await setStatus(VOICE_STATUS.speaking);
   await toTab({ action: "say", text: spoken });
   await setStatus("");
+  // Watches/reminders/spend may have changed during the run.
+  void broadcastState();
 }
 
 /**
@@ -277,14 +396,56 @@ async function confirmSubmit(id: string | undefined): Promise<void> {
     return;
   }
   clearSubmit();
-  const runtime = await buildRuntime();
-  if (!runtime) return;
+  const prepared = await buildAgent();
+  if (!prepared) return;
 
-  const outcome = await runtime.submit();
+  const outcome = await prepared.agent.submit();
   const spoken = outcome.ok
     ? `Sent it — I pressed “${outcome.label ?? "Submit"}”.`
     : `I couldn't submit it: ${outcome.error ?? "no submit button found"}`;
   await toTab({ action: "say", text: spoken });
+}
+
+/**
+ * Push one consistent snapshot to the panel and the on-page avatar.
+ *
+ * This is the UI↔avatar sync channel: whatever the engines know — vault state,
+ * watches, reminders, spend — is broadcast as one message, so the panel and the
+ * page can never show a different story about the same moment.
+ */
+async function broadcastState(): Promise<void> {
+  const deps = runtime?.toolDeps();
+  let vaultStatus: { exists: boolean; unlocked: boolean } = { exists: false, unlocked: false };
+  try {
+    vaultStatus = await vault.status();
+  } catch {
+    /* no vault yet is a normal state, not an error */
+  }
+  let usageLine = "";
+  try {
+    usageLine = await usage.summary();
+  } catch {
+    /* accounting is optional */
+  }
+  // The live activity log, so the Activity screen shows real events rather than
+  // an empty placeholder.
+  let events: unknown[] = [];
+  try {
+    events = await runtime?.activity.list({ limit: 60 }) ?? [];
+  } catch {
+    /* an empty log is a normal state */
+  }
+
+  broadcast({
+    type: "diggy:state",
+    state: {
+      vault: vaultStatus,
+      watches: deps ? deps.watches.list().map((entry) => entry.spec) : [],
+      reminders: deps ? deps.reminders.list() : [],
+      usage: usageLine,
+      events,
+    },
+  });
 }
 
 /** Fixed questions behind the dashboard's quick buttons. */
@@ -305,12 +466,65 @@ async function handleCommand(intent: string | undefined, text?: string): Promise
     await dictateHost.toggle();
     return;
   }
+
+  // The panel's answer to whatever it is showing. An approval (a vault lookup)
+  // settles a pending promise; anything else is the submit offer.
   if (intent === "confirm") {
+    if (text && answerApproval(text, true)) return;
     await confirmSubmit(text);
     return;
   }
   if (intent === "deny") {
+    if (text && answerApproval(text, false)) return;
     clearSubmit();
+    return;
+  }
+
+  // Local, non-model commands.
+  if (intent === "state") {
+    await broadcastState();
+    return;
+  }
+  if (intent === "usage") {
+    await toTab({ action: "status", text: await usage.summary() });
+    return;
+  }
+  if (intent === "chat.clear") {
+    await chat.clear();
+    await toTab({ action: "status", text: "Fresh conversation — I've forgotten the last one." });
+    await broadcastState();
+    return;
+  }
+  if (intent === "vault.status") {
+    await broadcastState();
+    return;
+  }
+  if (intent === "vault.unlock") {
+    const unlocked = await vault.unlock(text ?? "");
+    await toTab({
+      action: "status",
+      text: unlocked ? "Vault unlocked." : "That passphrase didn't work.",
+    });
+    await broadcastState();
+    return;
+  }
+  if (intent === "vault.create") {
+    try {
+      await vault.create(text ?? "", emptyVaultData());
+      await toTab({ action: "status", text: "Vault created and unlocked." });
+    } catch (error) {
+      await toTab({
+        action: "status",
+        text: `Couldn't create the vault: ${error instanceof Error ? error.message : "unknown error"}`,
+      });
+    }
+    await broadcastState();
+    return;
+  }
+  if (intent === "vault.lock") {
+    vault.lock();
+    await toTab({ action: "status", text: "Vault locked." });
+    await broadcastState();
     return;
   }
 
@@ -338,8 +552,11 @@ export default defineBackground(() => {
 
   // A reminder's one-shot alarm (and the monitor's repeating tick) arrive here.
   browser.alarms.onAlarm.addListener((alarm: { name: string }) => {
-    void runtime?.handleAlarm(alarm.name);
+    void runtime?.handleAlarm(alarm.name).then(() => broadcastState());
   });
+
+  // Tell whoever is listening — the panel may already be open.
+  void broadcastState();
 
   browser.runtime.onInstalled.addListener(() => {
     const sidePanel = getSidePanel();

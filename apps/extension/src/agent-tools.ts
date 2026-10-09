@@ -40,6 +40,8 @@ export interface ToolkitDeps {
     inbox?(options: { query?: string; max?: number }): Promise<unknown>;
     calendar?(options: { days?: number; max?: number }): Promise<unknown>;
   };
+  /** Tools built elsewhere (the vault) that do not need a named slot here. */
+  extraTools?: AgentToolShape[];
 }
 
 export interface Toolkit {
@@ -401,6 +403,7 @@ export async function createToolkit(deps: ToolkitDeps): Promise<Toolkit> {
   if (deps.watches) tools.push(...watchTools(deps.watches));
   if (deps.reminders) tools.push(...reminderTools(deps.reminders));
   if (deps.google) tools.push(...googleTools(deps.google));
+  if (deps.extraTools) tools.push(...deps.extraTools);
 
   return { page, tools };
 }
