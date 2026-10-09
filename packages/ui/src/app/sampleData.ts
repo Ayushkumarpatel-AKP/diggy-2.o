@@ -120,14 +120,18 @@ export interface ActionLogRow {
 
 export const sampleActionLog: ActionLogRow[] = [];
 
-/** Integrations screen — the connectable catalog comes from `services/api`. */
+/** Integrations screen — rows are supplied by the extension (`integrations` prop). */
+export type IntegrationStatus = "connected" | "connect" | "connecting" | "attention";
+
 export interface IntegrationRow {
   id: string;
   name: string;
   category: "Productivity" | "Development" | "Social";
   color: string;
   mark: string;
-  status: "connected" | "connect";
+  status: IntegrationStatus;
+  /** Human-readable reason, shown under the row when `status` is `"attention"`. */
+  detail?: string;
 }
 
 export const sampleIntegrations: IntegrationRow[] = [];

@@ -5,12 +5,14 @@ import { createRoot } from "react-dom/client";
 import { tokens } from "@diggy/shared";
 import "../../assets/app.css";
 import {
+  FALLBACK_KEY,
   normalizeSettings,
   originPattern,
   presetById,
   PROVIDER_PRESETS,
   SETTINGS_KEY,
   settingsReady,
+  type FallbackSettings,
   type ProviderSettings,
 } from "../../src/provider-settings.js";
 import {
@@ -22,6 +24,78 @@ import {
 } from "../../src/google.js";
 
 const GOOGLE_CLIENT_ID_KEY = "diggy:google-client-id";
+
+/** Written by this page only; read by the search fallback chain. */
+const SEARCH_KEY = "diggy:search";
+
+interface SearchSettings {
+  tavilyKey: string;
+  preferLocal: boolean;
+}
+
+function normalizeSearch(raw: unknown): SearchSettings {
+  const value = (raw ?? {}) as Partial<SearchSettings>;
+  return {
+    tavilyKey: typeof value.tavilyKey === "string" ? value.tavilyKey : "",
+    preferLocal: value.preferLocal === true,
+  };
+}
+
+/** One tiny real request against an OpenAI-compatible endpoint. Never exposes the key. */
+async function probeProvider(baseUrl: string, apiKey: string, model: string): Promise<string> {
+  const base = baseUrl.replace(/\/+$/, "");
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`;
+  try {
+    const listed = await fetch(`${base}/models`, { headers });
+    if (listed.ok) {
+      const data = (await listed.json()) as { data?: unknown };
+      const count = Array.isArray(data.data) ? data.data.length : null;
+      return count === null
+        ? "Connection OK — the endpoint answered /models."
+        : `Connection OK — ${count} model(s) listed.`;
+    }
+  } catch {
+    // Fall through to the 1-token chat probe below.
+  }
+  const chat = await fetch(`${base}/chat/completions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: "hi" }],
+      max_tokens: 1,
+    }),
+  });
+  if (!chat.ok) {
+    throw new Error(
+      `The endpoint answered HTTP ${chat.status} — check the key, base URL and model.`,
+    );
+  }
+  return "Connection OK — a 1-token chat completion succeeded.";
+}
+
+/** One real Tavily search; reports how many results came back. */
+async function probeSearch(key: string): Promise<string> {
+  const res = await fetch("https://api.tavily.com/search", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${key.trim()}`,
+    },
+    body: JSON.stringify({
+      query: "DIGGY connectivity probe",
+      max_results: 3,
+      search_depth: "basic",
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Tavily answered HTTP ${res.status} — check the API key.`);
+  }
+  const data = (await res.json()) as { results?: unknown };
+  const count = Array.isArray(data.results) ? data.results.length : 0;
+  return `Search OK — ${count} result(s) came back.`;
+}
 
 const label: CSSProperties = {
   display: "block",
@@ -93,6 +167,21 @@ function Field({
 function Settings() {
   const [settings, setSettings] = useState<ProviderSettings>(() => normalizeSettings(undefined));
   const [status, setStatus] = useState("");
+  const [primaryTest, setPrimaryTest] = useState("");
+  const [primaryBusy, setPrimaryBusy] = useState(false);
+  const [fallbackEnabled, setFallbackEnabled] = useState(false);
+  const [fallbackPresetId, setFallbackPresetId] = useState("nvidia");
+  const [fallbackApiKey, setFallbackApiKey] = useState("");
+  const [fallbackBaseUrl, setFallbackBaseUrl] = useState(
+    () => presetById("nvidia")?.baseUrl ?? "",
+  );
+  const [fallbackModel, setFallbackModel] = useState(() => presetById("nvidia")?.model ?? "");
+  const [fallbackStatus, setFallbackStatus] = useState("");
+  const [fallbackBusy, setFallbackBusy] = useState(false);
+  const [tavilyKey, setTavilyKey] = useState("");
+  const [preferLocal, setPreferLocal] = useState(false);
+  const [searchStatus, setSearchStatus] = useState("");
+  const [searchBusy, setSearchBusy] = useState(false);
   const [googleClientId, setGoogleClientId] = useState("");
   const [google, setGoogle] = useState<GoogleStatus>({ connected: false });
   const [googleLine, setGoogleLine] = useState("");
@@ -102,6 +191,26 @@ function Settings() {
   useEffect(() => {
     void browser.storage.local.get(SETTINGS_KEY).then((stored) => {
       setSettings(normalizeSettings(stored[SETTINGS_KEY]));
+    });
+    void browser.storage.local.get(FALLBACK_KEY).then((stored) => {
+      const raw = stored[FALLBACK_KEY] as Partial<FallbackSettings> | undefined;
+      if (raw && typeof raw.presetId === "string" && raw.presetId) {
+        const preset = presetById(raw.presetId);
+        setFallbackEnabled(true);
+        setFallbackPresetId(raw.presetId);
+        setFallbackApiKey(typeof raw.apiKey === "string" ? raw.apiKey : "");
+        setFallbackBaseUrl(
+          typeof raw.baseUrl === "string" && raw.baseUrl ? raw.baseUrl : (preset?.baseUrl ?? ""),
+        );
+        setFallbackModel(
+          typeof raw.model === "string" && raw.model ? raw.model : (preset?.model ?? ""),
+        );
+      }
+    });
+    void browser.storage.local.get(SEARCH_KEY).then((stored) => {
+      const next = normalizeSearch(stored[SEARCH_KEY]);
+      setTavilyKey(next.tavilyKey);
+      setPreferLocal(next.preferLocal);
     });
     setRedirectUri(googleRedirectUrl());
     void browser.storage.local.get(GOOGLE_CLIENT_ID_KEY).then((stored) => {
@@ -184,6 +293,88 @@ function Settings() {
         .catch(() => undefined);
     }
   }
+
+  async function testPrimary(): Promise<void> {
+    setPrimaryBusy(true);
+    setPrimaryTest("Testing…");
+    try {
+      const line = await probeProvider(settings.baseUrl, settings.apiKey, settings.model);
+      setPrimaryTest(`✓ ${line}`);
+    } catch (error) {
+      setPrimaryTest(`✗ ${error instanceof Error ? error.message : "Connection failed."}`);
+    } finally {
+      setPrimaryBusy(false);
+    }
+  }
+
+  function chooseFallbackPreset(id: string): void {
+    const next = presetById(id);
+    if (!next) return;
+    setFallbackPresetId(id);
+    setFallbackBaseUrl(next.baseUrl);
+    setFallbackModel(next.model);
+    setFallbackStatus("");
+  }
+
+  async function saveFallback(): Promise<void> {
+    if (!fallbackEnabled) {
+      await browser.storage.local.remove(FALLBACK_KEY);
+      setFallbackStatus(`Fallback disabled at ${new Date().toLocaleTimeString()}`);
+      return;
+    }
+    const value: FallbackSettings = {
+      presetId: fallbackPresetId,
+      apiKey: fallbackApiKey,
+      baseUrl: fallbackBaseUrl,
+      model: fallbackModel,
+    };
+    await browser.storage.local.set({ [FALLBACK_KEY]: value });
+    setFallbackStatus(`Saved at ${new Date().toLocaleTimeString()}`);
+    const pattern = originPattern(fallbackBaseUrl);
+    if (pattern) {
+      void browser.permissions
+        .request({ origins: [pattern] })
+        .catch(() => undefined);
+    }
+  }
+
+  async function testFallback(): Promise<void> {
+    setFallbackBusy(true);
+    setFallbackStatus("Testing…");
+    try {
+      const line = await probeProvider(fallbackBaseUrl, fallbackApiKey, fallbackModel);
+      setFallbackStatus(`✓ ${line}`);
+    } catch (error) {
+      setFallbackStatus(`✗ ${error instanceof Error ? error.message : "Connection failed."}`);
+    } finally {
+      setFallbackBusy(false);
+    }
+  }
+
+  async function saveSearch(): Promise<void> {
+    const value: SearchSettings = { tavilyKey, preferLocal };
+    await browser.storage.local.set({ [SEARCH_KEY]: value });
+    setSearchStatus(`Saved at ${new Date().toLocaleTimeString()}`);
+  }
+
+  async function testSearch(): Promise<void> {
+    if (!tavilyKey.trim()) {
+      setSearchStatus("✗ Paste a Tavily API key first.");
+      return;
+    }
+    setSearchBusy(true);
+    setSearchStatus("Searching…");
+    try {
+      const line = await probeSearch(tavilyKey);
+      setSearchStatus(`✓ ${line}`);
+    } catch (error) {
+      setSearchStatus(`✗ ${error instanceof Error ? error.message : "Search failed."}`);
+    } finally {
+      setSearchBusy(false);
+    }
+  }
+
+  const fallbackPreset = presetById(fallbackPresetId);
 
   return (
     <main style={{ background: tokens.color.bg, minHeight: "100vh", padding: 28 }}>
@@ -276,13 +467,247 @@ function Settings() {
             >
               Save
             </button>
+            <button
+              type="button"
+              disabled={primaryBusy}
+              onClick={() => void testPrimary()}
+              style={{
+                padding: "10px 18px",
+                borderRadius: tokens.radius.pill,
+                border: `1px solid ${tokens.color.line}`,
+                background: tokens.color.surface,
+                color: tokens.color.ink,
+                font: `600 13px ${tokens.font.sans}`,
+                cursor: primaryBusy ? "not-allowed" : "pointer",
+                opacity: primaryBusy ? 0.5 : 1,
+              }}
+            >
+              {primaryBusy ? "Testing…" : "Test"}
+            </button>
             <span
               style={{
                 fontSize: 12,
-                color: status ? tokens.color.success : ready ? tokens.color.muted : tokens.color.warning,
+                color: primaryTest
+                  ? primaryTest.startsWith("✓")
+                    ? tokens.color.success
+                    : tokens.color.warning
+                  : status
+                    ? tokens.color.success
+                    : ready
+                      ? tokens.color.muted
+                      : tokens.color.warning,
               }}
             >
-              {status || (ready ? "Ready" : "Add an API key to start chatting")}
+              {primaryTest || status || (ready ? "Ready" : "Add an API key to start chatting")}
+            </span>
+          </div>
+        </section>
+
+        <section style={card}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <h2 style={{ margin: "0 0 4px", fontSize: 15, color: tokens.color.ink }}>Fallback model</h2>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: tokens.color.muted }}>
+              <input
+                id="fallback-enabled"
+                type="checkbox"
+                checked={fallbackEnabled}
+                onChange={(event) => {
+                  setFallbackEnabled(event.target.checked);
+                  setFallbackStatus("");
+                }}
+              />
+              Enabled
+            </label>
+          </div>
+          <p style={{ margin: "0 0 14px", color: tokens.color.muted, fontSize: 12 }}>
+            Used automatically when the primary is rate-limited, out of quota or down — this is
+            what keeps DIGGY working on the free tiers.
+          </p>
+
+          <label style={label} htmlFor="fallback-preset">
+            Provider
+          </label>
+          <select
+            id="fallback-preset"
+            style={input}
+            value={fallbackPresetId}
+            disabled={!fallbackEnabled}
+            onChange={(event) => chooseFallbackPreset(event.target.value)}
+          >
+            {PROVIDER_PRESETS.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+
+          <Field
+            id="fallback-key"
+            title={
+              fallbackPreset?.needsKey === false
+                ? "API key (not needed for this provider)"
+                : "API key"
+            }
+            value={fallbackApiKey}
+            type="password"
+            placeholder={fallbackPreset?.needsKey === false ? "not required" : "paste your key"}
+            hint={fallbackPreset?.hint ? `Get one at ${fallbackPreset.hint}` : undefined}
+            onChange={(value) => {
+              setFallbackApiKey(value);
+              setFallbackStatus("");
+            }}
+          />
+          <Field
+            id="fallback-base"
+            title="Base URL"
+            value={fallbackBaseUrl}
+            placeholder="https://api.example.com/v1"
+            hint="Any OpenAI-compatible endpoint, including a local server."
+            onChange={(value) => {
+              setFallbackBaseUrl(value);
+              setFallbackStatus("");
+            }}
+          />
+          <Field
+            id="fallback-model"
+            title="Chat model"
+            value={fallbackModel}
+            placeholder="gpt-4o-mini"
+            onChange={(value) => {
+              setFallbackModel(value);
+              setFallbackStatus("");
+            }}
+          />
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 18 }}>
+            <button
+              type="button"
+              onClick={() => void saveFallback()}
+              style={{
+                padding: "10px 18px",
+                borderRadius: tokens.radius.pill,
+                border: `1px solid ${tokens.color.primary}`,
+                background: tokens.color.primary,
+                color: tokens.color.primaryInk,
+                font: `600 13px ${tokens.font.sans}`,
+                cursor: "pointer",
+              }}
+            >
+              {fallbackEnabled ? "Save" : "Disable"}
+            </button>
+            <button
+              type="button"
+              disabled={fallbackBusy || !fallbackEnabled}
+              onClick={() => void testFallback()}
+              style={{
+                padding: "10px 18px",
+                borderRadius: tokens.radius.pill,
+                border: `1px solid ${tokens.color.line}`,
+                background: tokens.color.surface,
+                color: tokens.color.ink,
+                font: `600 13px ${tokens.font.sans}`,
+                cursor: fallbackBusy || !fallbackEnabled ? "not-allowed" : "pointer",
+                opacity: fallbackBusy || !fallbackEnabled ? 0.5 : 1,
+              }}
+            >
+              {fallbackBusy ? "Testing…" : "Test"}
+            </button>
+            <span
+              style={{
+                fontSize: 12,
+                color: fallbackStatus
+                  ? fallbackStatus.startsWith("✓")
+                    ? tokens.color.success
+                    : fallbackStatus.startsWith("✗")
+                      ? tokens.color.warning
+                      : tokens.color.success
+                  : tokens.color.muted,
+              }}
+            >
+              {fallbackStatus || (fallbackEnabled ? "Fallback in use when primary fails" : "Fallback off")}
+            </span>
+          </div>
+        </section>
+
+        <section style={card}>
+          <h2 style={{ margin: "0 0 4px", fontSize: 15, color: tokens.color.ink }}>Web search</h2>
+          <p style={{ margin: "0 0 14px", color: tokens.color.muted, fontSize: 12 }}>
+            Search order: Tavily → local crawler → keyless Tavily.
+          </p>
+
+          <Field
+            id="search-key"
+            title="Tavily API key"
+            value={tavilyKey}
+            type="password"
+            placeholder="paste your Tavily key"
+            onChange={(value) => {
+              setTavilyKey(value);
+              setSearchStatus("");
+            }}
+          />
+
+          <div style={{ marginTop: 14 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: tokens.color.inkSoft }}>
+              <input
+                id="search-prefer-local"
+                type="checkbox"
+                checked={preferLocal}
+                onChange={(event) => {
+                  setPreferLocal(event.target.checked);
+                  setSearchStatus("");
+                }}
+              />
+              Prefer my local crawler (127.0.0.1:17322) over the hosted API
+            </label>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 18 }}>
+            <button
+              type="button"
+              onClick={() => void saveSearch()}
+              style={{
+                padding: "10px 18px",
+                borderRadius: tokens.radius.pill,
+                border: `1px solid ${tokens.color.primary}`,
+                background: tokens.color.primary,
+                color: tokens.color.primaryInk,
+                font: `600 13px ${tokens.font.sans}`,
+                cursor: "pointer",
+              }}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              disabled={searchBusy}
+              onClick={() => void testSearch()}
+              style={{
+                padding: "10px 18px",
+                borderRadius: tokens.radius.pill,
+                border: `1px solid ${tokens.color.line}`,
+                background: tokens.color.surface,
+                color: tokens.color.ink,
+                font: `600 13px ${tokens.font.sans}`,
+                cursor: searchBusy ? "not-allowed" : "pointer",
+                opacity: searchBusy ? 0.5 : 1,
+              }}
+            >
+              {searchBusy ? "Searching…" : "Test search"}
+            </button>
+            <span
+              style={{
+                fontSize: 12,
+                color: searchStatus
+                  ? searchStatus.startsWith("✓")
+                    ? tokens.color.success
+                    : searchStatus.startsWith("✗")
+                      ? tokens.color.warning
+                      : tokens.color.success
+                  : tokens.color.muted,
+              }}
+            >
+              {searchStatus || "Search runs without a key too, with lower limits"}
             </span>
           </div>
         </section>
