@@ -145,6 +145,8 @@ export interface DashboardProps {
     onCreate?: (passphrase: string) => void | Promise<void>;
     onLock?: () => void;
     autoLockAt?: number;
+    /** Move one field between shared (DIGGY may read it) and locked (it must ask). */
+    onToggleVisibility?: (key: string, visibility: "shared" | "locked") => void;
   };
 }
 

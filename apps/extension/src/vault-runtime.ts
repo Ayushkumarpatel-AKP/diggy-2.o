@@ -31,7 +31,7 @@
  * //   function createVaultRuntime(): VaultRuntime;
  * // END INTERFACE FOR INTEGRATION
  */
-import type { ProfileSchema } from "@diggy/shared";
+import type { FieldVisibility, ProfileSchema } from "@diggy/shared";
 // `apps/extension/package.json` is core-owned, so — like `field-mapper.ts` reaches
 // `@diggy/forms` — this module reaches the real `@diggy/vault` by relative path.
 import {
@@ -53,6 +53,14 @@ export interface VaultRuntime {
   lock(): void;
   profile(): Promise<ProfileSchema>;
   resolve(key: string, approve: () => boolean | Promise<boolean>): Promise<string | null>;
+  /**
+   * Move one field between shared and locked.
+   *
+   * This is the user's own control: a shared field DIGGY may read freely, a
+   * locked one it must ask for each time. Without it the screen could show the
+   * visibility of a field but never change it.
+   */
+  setVisibility(key: string, visibility: FieldVisibility): Promise<void>;
   onChange(listener: (unlocked: boolean) => void): () => void;
 }
 
@@ -183,5 +191,10 @@ export function createVaultRuntime(): VaultRuntime {
     };
   }
 
-  return { status, create, unlock, lock, profile, resolve, onChange };
+  async function setVisibility(key: string, visibility: FieldVisibility): Promise<void> {
+    if (!vault || !vault.isUnlocked) throw new Error("The vault is locked.");
+    await vault.setVisibility(key, visibility);
+  }
+
+  return { status, create, unlock, lock, profile, resolve, setVisibility, onChange };
 }

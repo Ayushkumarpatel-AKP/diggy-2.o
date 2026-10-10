@@ -802,6 +802,23 @@ async function handleCommand(intent: string | undefined, text?: string): Promise
     await broadcastState();
     return;
   }
+  if (intent === "vault.visibility") {
+    // `key:shared` or `key:locked` — the user moving one field between them.
+    const [key, visibility] = (text ?? "").split(":");
+    if (key && (visibility === "shared" || visibility === "locked")) {
+      try {
+        await vault.setVisibility(key, visibility);
+        await toTab({
+          action: "status",
+          text: visibility === "locked" ? `${key} is now locked.` : `${key} is now shareable.`,
+        });
+      } catch {
+        await toTab({ action: "status", text: `Couldn't change ${key}.` });
+      }
+    }
+    await broadcastState();
+    return;
+  }
   if (intent === "vault.lock") {
     vault.lock();
     await toTab({ action: "status", text: "Vault locked." });
