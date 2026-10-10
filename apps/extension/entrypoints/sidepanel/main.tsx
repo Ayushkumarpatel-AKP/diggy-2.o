@@ -282,8 +282,20 @@ function SidePanel() {
         // of this change.
         setSetupOpen(true);
       }}
+      /*
+       * This is live data, not the design gallery: without this the panel shows a
+       * "Preview data" badge in production even when every value is real.
+       */
+      preview={false}
       onAction={(intent) => send({ intent })}
       onAsk={(text) => send({ intent: "ask", text })}
+      /*
+       * Without this, every screen's explicit intent was re-mapped by substring
+       * matching and most fell through to a local status line — which is why the
+       * Integrations, Actions and Monitor buttons looked dead. The label rides
+       * along as `text` so the runtime can name the thing being acted on.
+       */
+      onCommand={(label, intent) => send({ ...(intent ? { intent } : {}), text: label })}
       {...(liveStatus ? { liveStatus } : {})}
       {...(state.watches ? { watches: state.watches.map(toWatchRow) } : {})}
       {...(state.events ? { events: state.events } : {})}

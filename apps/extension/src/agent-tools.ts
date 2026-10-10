@@ -42,6 +42,18 @@ export interface ToolkitDeps {
   };
   /** Tools built elsewhere (the vault) that do not need a named slot here. */
   extraTools?: AgentToolShape[];
+  /**
+   * Ask the user before doing something that changes what they see.
+   *
+   * Used by `openVideo` and any other navigating action: the model proposes, the
+   * user approves, and only then does anything touch the browser.
+   */
+  approve?: (request: {
+    title: string;
+    detail: string;
+    targetUrl?: string;
+    thumbnailUrl?: string;
+  }) => Promise<boolean>;
 }
 
 export interface Toolkit {
@@ -335,20 +347,75 @@ function googleTools(google: NonNullable<ToolkitDeps["google"]>): AgentToolShape
   return tools;
 }
 
+/** Pull a YouTube video id out of any URL shape YouTube uses. */
+function youtubeId(url: string): string | undefined {
+  const match =
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})/.exec(
+      url,
+    );
+  return match?.[1];
+}
+
 /**
- * Play a specific YouTube video by driving YouTube's own search page.
+ * The video tools — deliberately **two**, with opposite contracts.
  *
- * No API key and no scraping: the page tools already do exactly what a person
- * does — navigate to the results, read the accessibility tree, click the first
- * video link.
+ * The single `playYouTube` tool used to be the only thing mentioning video, and
+ * its description invited navigation, so a question like "tell me about
+ * MrBeast's latest video" navigated the user's tab. Splitting the pair is the
+ * fix: `findVideo` can only read, `openVideo` can only act and must be approved.
  */
-function youtubeTool(page: PageBridge): AgentToolShape {
-  return {
+function videoTools(
+  page: PageBridge,
+  search: ToolkitDeps["search"],
+  approve: ToolkitDeps["approve"],
+): AgentToolShape[] {
+  const tools: AgentToolShape[] = [];
+
+  if (search) {
+    tools.push({
+      schema: schema(
+        "findVideo",
+        "LOOK UP a video and report what it is (title, channel, link, thumbnail). This NEVER opens, navigates or plays anything — use it for every question or request for information about a video, including 'the latest MrBeast video'. To actually start playing, use openVideo afterwards.",
+        {
+          query: { type: "string", description: "What to look for, e.g. 'MrBeast latest video'." },
+        },
+        ["query"],
+      ),
+      run: async (args) => {
+        const query = stringArg(args, "query");
+        if (query === "") return { ok: false, error: "A query is required." };
+
+        // Read-only by construction: this path only ever calls searchWeb, so it
+        // cannot touch the user's tab even if the model wanted it to.
+        const outcome = await search(`site:youtube.com ${query}`, 5);
+        if (!outcome.ok || outcome.results.length === 0) {
+          return { ok: false, error: outcome.error ?? `No video found for "${query}".` };
+        }
+
+        const lines: string[] = [];
+        for (const [index, result] of outcome.results.entries()) {
+          const id = youtubeId(result.url);
+          lines.push(
+            `${index + 1}. ${result.title}`,
+            `   ${result.url}`,
+            id ? `   thumbnail: https://i.ytimg.com/vi/${id}/hqdefault.jpg` : "",
+            result.snippet ? `   ${result.snippet}` : "",
+          );
+        }
+        return {
+          ok: true,
+          content: `${lines.filter((line) => line !== "").join("\n")}\n\n(Answer the user from this. Do not open YouTube unless they asked to play it.)`,
+        };
+      },
+    });
+  }
+
+  tools.push({
     schema: schema(
-      "playYouTube",
-      "Open YouTube and play a video matching a description (e.g. 'the latest MrBeast video'). Searches YouTube and plays the first match.",
+      "openVideo",
+      "OPEN a video in the user's browser and start playing it. This changes what they are looking at, so the user is asked to approve it first. Only use this when they asked to play or watch something — not when they asked about it.",
       {
-        query: { type: "string", description: "What to search YouTube for." },
+        query: { type: "string", description: "What to play, e.g. 'MrBeast latest video'." },
         index: { type: "number", description: "Which result to play (1 = first, default 1)." },
       },
       ["query"],
@@ -356,7 +423,17 @@ function youtubeTool(page: PageBridge): AgentToolShape {
     run: async (args) => {
       const query = stringArg(args, "query");
       if (query === "") return { ok: false, error: "A query is required." };
-      const wanted = Math.max(1, numberArg(args, "index") ?? 1);
+
+      const approved = approve
+        ? await approve({
+            title: `Play “${query}” on YouTube?`,
+            detail: "This opens YouTube in your current tab and starts the video.",
+            targetUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
+          })
+        : false;
+      if (!approved) {
+        return { ok: false, error: "The user did not approve opening that video." };
+      }
 
       const navigated = await page.invoke("navigate", {
         url: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
@@ -375,12 +452,10 @@ function youtubeTool(page: PageBridge): AgentToolShape {
         const match = /link\s+"(.+?)".*?\[ref=(\d+)\]/i.exec(line);
         if (match?.[1] && match[2]) links.push({ name: match[1], ref: match[2] });
       }
+      const wanted = Math.max(1, numberArg(args, "index") ?? 1);
       const target = links.filter((link) => link.name.length > 8)[wanted - 1];
       if (!target) {
-        return {
-          ok: false,
-          error: `YouTube opened but no playable result was found for "${query}".`,
-        };
+        return { ok: false, error: `YouTube opened but no playable result was found for "${query}".` };
       }
 
       const clicked = await page.invoke("click", { target: target.ref });
@@ -388,7 +463,9 @@ function youtubeTool(page: PageBridge): AgentToolShape {
         ? { ok: true, content: `Playing "${target.name}" on YouTube.` }
         : { ok: false, error: clicked.error ?? "Could not start the video." };
     },
-  };
+  });
+
+  return tools;
 }
 
 export async function createToolkit(deps: ToolkitDeps): Promise<Toolkit> {
@@ -396,7 +473,7 @@ export async function createToolkit(deps: ToolkitDeps): Promise<Toolkit> {
   const tools = await page.tools();
 
   tools.push(notifyTool(deps.onNotify));
-  tools.push(youtubeTool(page));
+  tools.push(...videoTools(page, deps.search, deps.approve));
 
   if (deps.search) tools.push(searchTool(deps.search));
   if (deps.fetchPage) tools.push(fetchPageTool(deps.fetchPage));

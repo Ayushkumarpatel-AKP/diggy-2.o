@@ -234,7 +234,11 @@ let approvalSeq = 0;
  * release a locked field on its own. The promise only settles when the user
  * presses a button, so a forgotten prompt cannot silently approve anything.
  */
-function requestApproval(title: string, detail: string): Promise<boolean> {
+function requestApproval(
+  title: string,
+  detail: string,
+  extra?: { targetUrl?: string; thumbnailUrl?: string },
+): Promise<boolean> {
   const id = `approve_${(approvalSeq += 1)}`;
   return new Promise<boolean>((resolve) => {
     pendingApprovals.set(id, (approved) => {
@@ -244,7 +248,16 @@ function requestApproval(title: string, detail: string): Promise<boolean> {
     });
     broadcast({
       type: "diggy:confirmation",
-      confirmation: { id, title, detail, confirmLabel: "Allow", denyLabel: "Not now" },
+      confirmation: {
+        id,
+        title,
+        detail,
+        confirmLabel: "Allow",
+        denyLabel: "Not now",
+        // The preview card shows the thumbnail and host when it has them.
+        ...(extra?.targetUrl ? { targetUrl: extra.targetUrl } : {}),
+        ...(extra?.thumbnailUrl ? { thumbnailUrl: extra.thumbnailUrl } : {}),
+      },
     });
     void toTab({ action: "status", text: title });
   });
@@ -350,8 +363,12 @@ async function buildAgent(context?: string): Promise<PreparedRun | null> {
           "Only for this request — nothing is saved or sent anywhere else.",
         ),
     }),
-    // Prior turns, so "and the next one" has a referent.
-    history: await chat.recent(),
+    // Anything that changes what the user is looking at is proposed, not done.
+    approve: (request) =>
+      requestApproval(request.title, request.detail, {
+        ...(request.targetUrl ? { targetUrl: request.targetUrl } : {}),
+        ...(request.thumbnailUrl ? { thumbnailUrl: request.thumbnailUrl } : {}),
+      }),
     ...(context ? { context } : {}),
   });
 
