@@ -115,6 +115,16 @@ async function sendToTab(message: unknown): Promise<void> {
   }
 }
 
+/** The URL of the focused tab, or undefined when there isn't one. */
+async function activeTabUrl(): Promise<string | undefined> {
+  try {
+    const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+    return tab?.url;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The bridge the agent runtime uses to reach the Action Engine in the page. */
 const sendToPage: SendToPage = async (message: unknown) => {
   const tabId = await activeTabId();
@@ -449,6 +459,17 @@ async function runGoal(goal: string, context?: string): Promise<void> {
   await recordUsage(prepared.registry, settings.model);
   // Remember the exchange so the next command has context.
   await chat.append(goal, spoken);
+  // Record what was actually done. Without this the Actions and Activity screens
+  // had no producer at all — they could only ever be empty.
+  try {
+    runtime?.activity.record({
+      kind: "action",
+      title: goal,
+      detail: spoken.slice(0, 200),
+    });
+  } catch {
+    /* logging must never break a command */
+  }
 
   await setStatus(VOICE_STATUS.speaking);
   await toTab({ action: "say", text: spoken });
@@ -635,6 +656,61 @@ async function handleCommand(intent: string | undefined, text?: string): Promise
           : `${connector.label}: ${result.error ?? "could not connect"}`,
       });
     }
+    await broadcastState();
+    return;
+  }
+  if (intent.startsWith("watch.")) {
+    // The Monitor screen's controls. Every branch acts on the real engine — the
+    // page used to have none of these, so its rows could not be managed at all.
+    const [verb, watchId] = intent.split(":");
+    const monitor = runtime?.monitor;
+    if (!monitor) {
+      await toTab({ action: "status", text: "Monitoring isn't running yet." });
+      return;
+    }
+
+    if (verb === "watch.add") {
+      const url = await activeTabUrl();
+      if (!url || url.startsWith("chrome") || url.startsWith("edge") || url.startsWith("about")) {
+        await toTab({ action: "status", text: "Open a normal page first, then add it to Monitor." });
+        return;
+      }
+      monitor.add({ url, kind: "content_change", intervalSec: 900, keep: true });
+      await toTab({ action: "status", text: `Now watching this page every 15 minutes.` });
+    } else if (verb === "watch.check" && watchId) {
+      const events = await monitor.check(watchId);
+      await toTab({
+        action: "status",
+        text:
+          events.length > 0
+            ? `Found ${events.length} change${events.length === 1 ? "" : "s"}.`
+            : "No change — it compares against the last reading.",
+      });
+    } else if (verb === "watch.remove" && watchId) {
+      monitor.remove(watchId);
+      await toTab({ action: "status", text: "Stopped watching that page." });
+    } else if ((verb === "watch.pause" || verb === "watch.resume") && watchId) {
+      // Armed/disarmed lives on the engine's own watch state, so this changes
+      // what the scheduler actually does rather than just what the row shows.
+      try {
+        const record = await monitor.engine.store.get(watchId);
+        if (record) {
+          await monitor.engine.store.setState(watchId, {
+            ...record.state,
+            armed: verb === "watch.resume",
+          });
+        }
+        await toTab({
+          action: "status",
+          text: verb === "watch.resume" ? "Resumed that watch." : "Paused that watch.",
+        });
+      } catch {
+        await toTab({ action: "status", text: "Couldn't change that watch." });
+      }
+    } else {
+      await toTab({ action: "status", text: "That watch action isn't supported." });
+    }
+
     await broadcastState();
     return;
   }
