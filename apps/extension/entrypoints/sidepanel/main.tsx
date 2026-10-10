@@ -205,6 +205,12 @@ function SidePanel() {
     thumbnailUrl?: string;
   } | null>(null);
 
+  // Loaded on mount, not only when the overlay opens: the API Keys *screen* reads
+  // the same state, and without it that tab rendered its empty state forever.
+  useEffect(() => {
+    void loadSetup().then(setSetup);
+  }, []);
+
   useEffect(() => {
     if (setupOpen) void loadSetup().then(setSetup);
   }, [setupOpen]);
@@ -319,6 +325,25 @@ function SidePanel() {
       {...(state.watches ? { watches: state.watches.map(toWatchRow) } : {})}
       {...(state.events ? { events: state.events } : {})}
       {...(state.integrations ? { integrations: state.integrations.map(toIntegrationRow) } : {})}
+      {...(setup
+        ? {
+            setup: {
+              primary: setup.primary,
+              fallback: setup.fallback,
+              search: setup.search,
+              presets: PROVIDER_PRESETS.map((preset) => ({
+                id: preset.id,
+                label: preset.label,
+                baseUrl: preset.baseUrl,
+                model: preset.model,
+                sttModel: preset.sttModel,
+                needsKey: preset.needsKey,
+              })),
+              onSave: saveSetup,
+              ...(setupStatus !== undefined ? { status: setupStatus } : {}),
+            },
+          }
+        : {})}
       vault={{
         ...(state.vault ? { status: state.vault } : {}),
         onUnlock: (passphrase) => {

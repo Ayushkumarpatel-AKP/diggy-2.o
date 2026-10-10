@@ -10,7 +10,7 @@ import {
   settingsReady,
   type ProviderSettings,
 } from "../src/provider-settings.js";
-import { createAgentRuntime, type AgentRuntime } from "../src/agent-runtime.js";
+import { createAgentRuntime, type AgentRun, type AgentRuntime } from "../src/agent-runtime.js";
 import type { SendToPage } from "../src/page-tools.js";
 import { createUnifiedRuntime, type UnifiedRuntime } from "../src/unified-runtime.js";
 import { createChatHistory } from "../src/chat-history.js";
@@ -440,8 +440,10 @@ async function runGoal(goal: string, context?: string): Promise<void> {
   await setStatus(VOICE_STATUS.thinking);
 
   let spoken: string;
+  let runResult: AgentRun | undefined;
   try {
     const result = await prepared.agent.run(goal);
+    runResult = result;
     spoken =
       result.text ||
       (result.status === "budget-exceeded"
@@ -482,12 +484,21 @@ async function runGoal(goal: string, context?: string): Promise<void> {
    * all — previously the card only ever rendered for an *approval*, so a normal
    * answer had nowhere to put a link.
    */
-  const link = /https?:\/\/[^\s)"'<>]+/i.exec(spoken)?.[0];
-  // A YouTube link carries its own thumbnail, so the card can show the video's
-  // face rather than a bare hostname.
-  const videoId = link
-    ? /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([A-Za-z0-9_-]{11})/.exec(link)?.[1]
-    : undefined;
+  /*
+   * Show a card when there is something to show. The link comes from what the
+   * tools returned (the model rarely repeats it in its reply), falling back to a
+   * URL in the text only if the tools gave us nothing.
+   */
+  let link = runResult?.card?.targetUrl;
+  let thumbnailUrl = runResult?.card?.thumbnailUrl;
+  if (!link) {
+    const found = /https?:\/\/[^\s)"'<>]+/i.exec(spoken)?.[0];
+    if (found) {
+      link = found;
+      const id = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([A-Za-z0-9_-]{11})/.exec(found)?.[1];
+      if (id) thumbnailUrl = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+    }
+  }
   broadcast({
     type: "diggy:card",
     card: link
@@ -495,7 +506,7 @@ async function runGoal(goal: string, context?: string): Promise<void> {
           title: goal,
           detail: spoken.slice(0, 300),
           targetUrl: link,
-          ...(videoId ? { thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` } : {}),
+          ...(thumbnailUrl ? { thumbnailUrl } : {}),
         }
       : null,
   });
