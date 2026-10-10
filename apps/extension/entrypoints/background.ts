@@ -133,9 +133,10 @@ const sendToPage: SendToPage = async (message: unknown) => {
 };
 
 function toTab(payload: {
-  action: "say" | "status" | "play";
+  action: "say" | "status" | "play" | "card";
   text?: string;
   state?: string;
+  card?: { title?: string; detail?: string; targetUrl?: string; thumbnailUrl?: string } | null;
 }): Promise<void> {
   return sendToTab({ type: "diggy:avatar", ...payload });
 }
@@ -499,17 +500,18 @@ async function runGoal(goal: string, context?: string): Promise<void> {
       if (id) thumbnailUrl = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
     }
   }
-  broadcast({
-    type: "diggy:card",
-    card: link
-      ? {
-          title: goal,
-          detail: spoken.slice(0, 300),
-          targetUrl: link,
-          ...(thumbnailUrl ? { thumbnailUrl } : {}),
-        }
-      : null,
-  });
+  const card = link
+    ? {
+        title: goal,
+        detail: spoken.slice(0, 300),
+        targetUrl: link,
+        ...(thumbnailUrl ? { thumbnailUrl } : {}),
+      }
+    : null;
+  // The panel's card and the avatar's bubble are the same result, so they are
+  // sent together and cannot disagree.
+  broadcast({ type: "diggy:card", card });
+  await toTab({ action: "card", card });
 
   // Watches/reminders/spend may have changed during the run.
   void broadcastState();
@@ -841,6 +843,15 @@ export default defineBackground(() => {
     // tab the user is looking at.
     if (message.type === "diggy:hello") {
       void onTabHello(sender?.tab?.id);
+      return undefined;
+    }
+
+    // The avatar's own card buttons. "Open" is a real navigation, so it goes
+    // through the same path as any other command.
+    if (message.type === "diggy:card-action") {
+      const action = (raw as { action?: string }).action;
+      const url = (raw as { url?: string }).url;
+      if (action === "open" && url) void runGoal(`Open ${url}`);
       return undefined;
     }
 

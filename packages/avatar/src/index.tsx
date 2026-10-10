@@ -88,6 +88,17 @@ export interface AvatarProps {
   walkIn?: boolean;
   /** Idle ambience: play `stretch` this often (ms). 0 disables. Defaults to 45000. */
   stretchEveryMs?: number;
+  /**
+   * A result to show in the bubble — a thumbnail, a title, and the text.
+   *
+   * Declarative rather than a new `AvatarAPI` method: the host re-renders with a
+   * new card and React reconciles it, so nothing on the contract has to change.
+   * While a card is shown it replaces the one-line status bubble, because a
+   * thumbnail needs the room.
+   */
+  card?: AvatarCard | null;
+  /** Called when the card's own buttons are pressed. */
+  onCardAction?: (action: "open" | "dismiss") => void;
   /** External controller to drive; one is created internally otherwise. */
   controller?: AvatarController;
   /** Called once a renderer reports its capability. */
@@ -159,6 +170,22 @@ function horizontalEdge(corner: AvatarCorner, offset: number): CSSProperties {
  *
  * `diggy_U.vrm` is the character; its clips come from `assets/avatar/animations`.
  */
+export interface AvatarCard {
+  title?: string;
+  detail?: string;
+  targetUrl?: string;
+  thumbnailUrl?: string;
+}
+
+/** The host part of a URL, for a label that does not wrap over three lines. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
 /**
  * Turn bare URLs in a status line into real links.
  *
@@ -192,6 +219,8 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
     corner = "bottom-left",
     size = 200,
     intro = true,
+    card = null,
+    onCardAction,
     stretchEveryMs = 45_000,
     controller,
     onCapability,
@@ -306,7 +335,94 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
       data-diggy-state={snapshot.state}
       data-diggy-clips={snapshot.capability?.clips.join(",") ?? ""}
     >
-      {snapshot.status ? (
+      {card ? (
+        <div
+          data-diggy-avatar-card=""
+          style={{
+            position: "absolute",
+            ...verticalEdge(corner, boxHeight + 8),
+            ...horizontalEdge(corner, 0),
+            // A thumbnail needs room, so the card is wider than the status line.
+            maxWidth: Math.max(300, size * 2.4),
+            padding: 12,
+            borderRadius: 14,
+            background: "rgba(17, 17, 24, 0.94)",
+            color: "#f6f4ff",
+            font: "12.5px/1.45 system-ui, -apple-system, Segoe UI, sans-serif",
+            pointerEvents: "auto",
+            boxShadow: "0 10px 28px rgba(0,0,0,0.34)",
+            overflowWrap: "anywhere",
+          }}
+        >
+          {card.thumbnailUrl ? (
+            <img
+              src={card.thumbnailUrl}
+              alt=""
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              style={{
+                display: "block",
+                width: "100%",
+                aspectRatio: "16 / 9",
+                objectFit: "cover",
+                borderRadius: 10,
+                marginBottom: 9,
+                background: "#2a2a35",
+              }}
+            />
+          ) : null}
+
+          {card.title ? (
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>{card.title}</div>
+          ) : null}
+          {card.detail ? <div style={{ opacity: 0.85 }}>{card.detail}</div> : null}
+          {card.targetUrl ? (
+            <div style={{ opacity: 0.55, fontSize: 11, marginTop: 7 }}>
+              {hostOf(card.targetUrl)}
+            </div>
+          ) : null}
+
+          <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
+            {card.targetUrl ? (
+              <button
+                type="button"
+                onClick={() => onCardAction?.("open")}
+                style={{
+                  flex: "0 0 auto",
+                  padding: "6px 14px",
+                  borderRadius: 999,
+                  border: "none",
+                  background: "#7c5cff",
+                  color: "#fff",
+                  font: "inherit",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Open
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => onCardAction?.("dismiss")}
+              style={{
+                flex: "0 0 auto",
+                padding: "6px 14px",
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,0.22)",
+                background: "transparent",
+                color: "#f6f4ff",
+                font: "inherit",
+                cursor: "pointer",
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {snapshot.status && !card ? (
         <div
           data-diggy-avatar-status=""
           style={{

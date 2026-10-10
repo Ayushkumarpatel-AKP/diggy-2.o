@@ -14,16 +14,17 @@
 import { createElement, createRef } from "react";
 import { createRoot } from "react-dom/client";
 import { Avatar } from "@diggy/avatar";
-import type { AvatarHandle, AvatarProps } from "@diggy/avatar";
+import type { AvatarHandle, AvatarCard, AvatarProps } from "@diggy/avatar";
 import { createToolHost } from "@diggy/page-agent";
 import type { AvatarState } from "@diggy/shared";
 
 /** Messages the background sends to drive the on-page avatar. */
 interface AvatarMessage {
   type: "diggy:avatar";
-  action: "say" | "status" | "play" | "mount" | "unmount";
+  action: "say" | "status" | "play" | "mount" | "unmount" | "card";
   text?: string;
   state?: AvatarState;
+  card?: AvatarCard | null;
 }
 
 function isAvatarMessage(value: unknown): value is AvatarMessage {
@@ -172,11 +173,34 @@ export default defineContentScript({
      * the GL context is released rather than left running off-screen.
      */
     let root: ReturnType<typeof createRoot> | null = null;
+    /** The result card currently shown in the avatar's bubble. */
+    let currentCard: AvatarCard | null = null;
 
     function mountAvatar(): void {
       if (root) return;
       root = createRoot(mount);
-      root.render(createElement(Avatar, { ...avatarProps, ref: handleRef }));
+      renderAvatar();
+    }
+
+    function renderAvatar(): void {
+      if (!root) return;
+      root.render(
+        createElement(Avatar, {
+          ...avatarProps,
+          ref: handleRef,
+          card: currentCard,
+          // The card's buttons live in the page, so they report back over the
+          // same message channel the panel uses.
+          onCardAction: (action: "open" | "dismiss") => {
+            const target = currentCard?.targetUrl;
+            currentCard = null;
+            renderAvatar();
+            if (action === "open" && target) {
+              post({ type: "diggy:card-action", action: "open", url: target });
+            }
+          },
+        }),
+      );
     }
 
     function unmountAvatar(): void {
@@ -290,6 +314,14 @@ export default defineContentScript({
       }
       if (raw.action === "unmount") {
         unmountAvatar();
+        return undefined;
+      }
+
+      // A result card for the avatar's own bubble: thumbnail, text, Open/Dismiss.
+      if (raw.action === "card") {
+        currentCard = raw.card ?? null;
+        mountAvatar();
+        renderAvatar();
         return undefined;
       }
 
