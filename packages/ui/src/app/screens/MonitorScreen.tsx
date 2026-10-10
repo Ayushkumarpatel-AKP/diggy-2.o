@@ -63,6 +63,12 @@ export function MonitorScreen({
         </Button>
       </ScreenHeader>
 
+      <div className="dg-inline">
+        <Pill tone="muted" icon="monitor">
+          A watch checks a page on a schedule and tells you when it changes.
+        </Pill>
+      </div>
+
       <Tabs items={MONITOR_TABS} value={tab} onChange={setTab} ariaLabel="Monitor sources" />
 
       <Panel>
@@ -91,7 +97,7 @@ export function MonitorScreen({
             state="empty"
             icon="globe"
             title="Nothing tracked here yet"
-            message="Switch tabs, or add a website to this source."
+            message="Open a page and choose “Track this page” to start your first watch."
           />
         ) : (
           rows.map((watch) => (

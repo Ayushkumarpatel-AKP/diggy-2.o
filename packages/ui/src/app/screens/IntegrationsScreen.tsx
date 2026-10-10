@@ -38,6 +38,30 @@ const INTEGRATION_TABS = [
   { id: "social", label: "Social" },
 ];
 
+/** What each service is for, shown under its name so the row explains itself. */
+const INTEGRATION_PURPOSE: Record<string, string> = {
+  google: "Gmail and Calendar — read and search your mail and events",
+  github: "Repositories — summarise code and follow releases",
+  notion: "Notes and docs — search and summarise your pages",
+  youtube: "Videos — recap what you watch",
+  slack: "Team chat — bring important messages to DIGGY",
+  discord: "Communities — keep up with the channels you follow",
+  linear: "Issues — track what your team is shipping",
+  spotify: "Music — look up tracks and playlists",
+};
+
+/**
+ * Connectors with no connect flow wired yet (the background answers their
+ * `connect()` with "Not wired yet"). These rows offer no Connect button that
+ * would silently fail — a disabled button that says why instead.
+ */
+const INTEGRATION_UNAVAILABLE: Record<string, string> = {
+  slack: "Connecting Slack isn't available in DIGGY yet.",
+  discord: "Connecting Discord isn't available in DIGGY yet.",
+  linear: "Connecting Linear isn't available in DIGGY yet.",
+  spotify: "Connecting Spotify isn't available in DIGGY yet.",
+};
+
 export function IntegrationsScreen({
   onCommand,
   state = "ready",
@@ -62,6 +86,12 @@ export function IntegrationsScreen({
       >
         {preview ? <PreviewBadge /> : null}
       </ScreenHeader>
+
+      <div className="dg-inline">
+        <Pill tone="muted" icon="integrations">
+          Connecting is optional — it lets DIGGY read or act in that service for you.
+        </Pill>
+      </div>
 
       {integrations !== undefined ? (
         <div className="dg-inline">
@@ -135,7 +165,9 @@ export function IntegrationsScreen({
                 <BrandMark spec={{ id: item.id, label: item.name, color: item.color, mark: item.mark }} />
                 <div className="dg-intg__body">
                   <div className="dg-intg__name">{item.name}</div>
-                  <div className="dg-intg__cat">{item.category}</div>
+                  <div className="dg-intg__cat">
+                    {INTEGRATION_PURPOSE[item.id] ?? item.category}
+                  </div>
                   {item.status === "attention" && item.detail ? (
                     <div className="dg-intg__cat" title={item.detail}>
                       {item.detail}
@@ -145,7 +177,17 @@ export function IntegrationsScreen({
                 <div
                   style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}
                 >
-                  {item.status === "connected" ? (
+                  {item.status !== "connected" && INTEGRATION_UNAVAILABLE[item.id] ? (
+                    <button
+                      type="button"
+                      className="dg-btn dg-btn--outline dg-btn--sm"
+                      disabled
+                      aria-disabled="true"
+                      title={INTEGRATION_UNAVAILABLE[item.id]}
+                    >
+                      Not yet
+                    </button>
+                  ) : item.status === "connected" ? (
                     <>
                       <Pill tone="success" icon="check">
                         Connected

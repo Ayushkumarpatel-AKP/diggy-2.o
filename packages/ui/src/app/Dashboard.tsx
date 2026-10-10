@@ -15,6 +15,7 @@
  *   onSettings?(): void;
  *   onAction?(intent: ActionIntent): void; // buttons → extension runtime
  *   onAsk?(text: string): void;            // composer → extension runtime answers
+ *   onCommand?(label: string, intent?: string): void; // explicit screen intents go verbatim
  *   preview?: boolean;                     // sample data is labelled when true (default)
  *   screenStates?: Partial<Record<NavTabId, ScreenState>>;
  *   liveStatus?: { id: string; text: string; priority?: StatusPriority; style?: BubbleStyle };
@@ -89,6 +90,14 @@ export interface DashboardProps {
   onAction?: (intent: ActionIntent) => void;
   /** The composer sends typed text to the runtime, which answers it. */
   onAsk?: (text: string) => void;
+  /**
+   * Verbatim command channel to the extension runtime. When a screen supplies an
+   * explicit `intent` that the runtime understands, `handleCommand` forwards
+   * `(label, intent)` here unchanged instead of mapping the label. When absent,
+   * the dashboard falls back to `onAction`/`onAsk` and local status lines, so
+   * the static gallery keeps working with no runtime wired.
+   */
+  onCommand?: (label: string, intent?: string) => void;
   /** When true (default) sample rows are labelled as a preview. */
   preview?: boolean;
   /** Optional per-screen state so empty / loading / error are real, not implied. */
@@ -150,9 +159,41 @@ const GOAL_SENTINEL: Record<string, string> = {
   "form.fill": "Fill this form with my saved profile, without submitting.",
 };
 
+/**
+ * Intent verbs the extension runtime understands. Screens send these verbatim
+ * as the `intent` argument of `onCommand(label, intent)`; parameters travel
+ * after a colon (`integration.connect:github`). Anything outside this set is
+ * a legacy sentinel or a bare label and keeps the old `onAction` mapping.
+ */
+const RUNTIME_INTENTS = new Set([
+  "ask",
+  "summarize",
+  "explain",
+  "extract",
+  "repository",
+  "opportunities",
+  "track",
+  "voice",
+  "confirm",
+  "deny",
+  "setup.open",
+  "integration.connect",
+  "integration.disconnect",
+  "vault.status",
+  "vault.lock",
+  "usage",
+  "state",
+  "chat.clear",
+]);
+
+/** True when `intent` names a runtime verb, ignoring any `:parameter` suffix. */
+function isRuntimeIntent(intent: string): boolean {
+  const verb = intent.split(":")[0] ?? "";
+  return RUNTIME_INTENTS.has(verb);
+}
+
 /** Map a button's label onto a runtime intent (`null` = local-only feedback). */
-export function intentForLabel(label: string): ActionIntent | null {
-  const exact = INTENT_SENTINEL[label];
+export function intentForLabel(label: string): ActionIntent | null {  const exact = INTENT_SENTINEL[label];
   if (exact) return exact;
   const value = label.toLowerCase();
   if (value.includes("summar")) return "summarize";
@@ -173,6 +214,7 @@ export function Dashboard({
   onSettings,
   onAction,
   onAsk,
+  onCommand,
   preview = true,
   screenStates,
   liveStatus,
@@ -222,6 +264,14 @@ export function Dashboard({
 
   const handleCommand = useCallback(
     (label: string, intent?: string) => {
+      // An explicit runtime intent goes to the runtime verbatim — the label is
+      // only context for it, never re-mapped. Everything without one keeps the
+      // legacy path: goal sentinels ask, known labels map to an ActionIntent,
+      // and the rest is a local acknowledgement (never a dead click).
+      if (intent && isRuntimeIntent(intent) && onCommand) {
+        onCommand(label, intent);
+        return;
+      }
       // Real work goes to the runtime; everything else is a local acknowledgement.
       // A goal sentinel (e.g. `form.fill`) has no fixed intent, so it asks the runtime
       // with a goal sentence over the existing `ask` channel — no new intents invented.
@@ -239,7 +289,7 @@ export function Dashboard({
       }
       status.push({ text: intent ? `${label} · ${intent}` : label, priority: 1, mood: "thinking" });
     },
-    [status, onAction, onAsk],
+    [status, onAction, onAsk, onCommand],
   );
 
   const handleAsk = useCallback(

@@ -84,7 +84,7 @@ export function ActionsScreen({
             }
             message={
               state === "empty"
-                ? "Ask DIGGY to fill a form, summarise a page or set a reminder."
+                ? "Things DIGGY has done for you — filled forms, summaries, reminders — show up here. Ask below to create your first one."
                 : state === "error"
                   ? "The action log didn’t respond. Try again."
                   : undefined
@@ -94,7 +94,10 @@ export function ActionsScreen({
         ) : rows.length === 0 ? (
           <div className="dg-empty">
             <Icon name="actions" size={22} />
-            <p style={{ margin: "8px 0 0" }}>No actions in this state.</p>
+            <p style={{ margin: "8px 0 0" }}>
+              Things DIGGY has done for you — filled forms, summaries, reminders — show up
+              here. Nothing in this state yet; try another tab.
+            </p>
           </div>
         ) : (
           rows.map((row) => (

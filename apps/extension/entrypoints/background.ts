@@ -18,6 +18,7 @@ import { cachedSearch, createTtlCache, createUsageLedger } from "../src/usage.js
 import { createVaultRuntime } from "../src/vault-runtime.js";
 import { vaultTools } from "../src/vault-tools.js";
 import { emptyVaultData } from "@diggy/vault";
+import { createConnectors } from "../src/connectors/index.js";
 import type { SearchOutcome } from "../src/search-web.js";
 import { bindPushToTalk, type CommandsApi, type RuntimeMessageApi } from "../src/shortcut.js";
 
@@ -491,6 +492,22 @@ async function broadcastState(): Promise<void> {
     /* an empty log is a normal state */
   }
 
+  // The connector catalogue. `status()` only reads storage on this path, so the
+  // broadcast stays cheap — no network on every state change.
+  let integrations: { id: string; name: string; category: string; status: string }[] = [];
+  try {
+    integrations = await Promise.all(
+      createConnectors().map(async (connector) => ({
+        id: connector.id,
+        name: connector.label,
+        category: connector.category,
+        status: await connector.status(),
+      })),
+    );
+  } catch {
+    /* a connector failing to report must not blank the whole screen */
+  }
+
   broadcast({
     type: "diggy:state",
     state: {
@@ -499,6 +516,7 @@ async function broadcastState(): Promise<void> {
       reminders: deps ? deps.reminders.list() : [],
       usage: usageLine,
       events,
+      integrations,
     },
   });
 }
@@ -571,6 +589,33 @@ async function handleCommand(intent: string | undefined, text?: string): Promise
       await toTab({
         action: "status",
         text: `Couldn't create the vault: ${error instanceof Error ? error.message : "unknown error"}`,
+      });
+    }
+    await broadcastState();
+    return;
+  }
+  if (intent === "setup.open") {
+    broadcast({ type: "diggy:setup", open: true });
+    return;
+  }
+  if (intent.startsWith("integration.")) {
+    // The label carries the id: `integration.connect:github`.
+    const [verb, connectorId] = intent.split(":");
+    const connector = createConnectors().find((entry) => entry.id === connectorId);
+    if (!connector) {
+      await toTab({ action: "status", text: "That integration isn't available in this build." });
+      return;
+    }
+    if (verb === "integration.disconnect") {
+      await connector.disconnect();
+      await toTab({ action: "status", text: `${connector.label} disconnected.` });
+    } else {
+      const result = await connector.connect();
+      await toTab({
+        action: "status",
+        text: result.ok
+          ? `${connector.label} connected.`
+          : `${connector.label}: ${result.error ?? "could not connect"}`,
       });
     }
     await broadcastState();

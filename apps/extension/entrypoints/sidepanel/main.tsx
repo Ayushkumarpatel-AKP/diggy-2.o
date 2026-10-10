@@ -14,11 +14,78 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { Dashboard, type WatchRow } from "../../../../packages/ui/src/index.js";
+import { Dashboard, SetupPanel, type IntegrationRow, type WatchRow } from "../../../../packages/ui/src/index.js";
 import type { BubbleStyle, StatusPriority } from "../../../../packages/ui/src/index.js";
+import { PROVIDER_PRESETS } from "../../src/provider-settings.js";
 import type { ActivityEvent, WatchSpec } from "@diggy/shared";
 import "../../../../packages/ui/src/styles.css";
 import "../../assets/app.css";
+
+/** Storage keys the SetupPanel edits. Kept identical to provider-settings.ts. */
+const KEYS = {
+  primary: "diggy:providers",
+  fallback: "diggy:providers:fallback",
+  search: "diggy:search",
+} as const;
+
+interface SetupValues {
+  primary: { presetId: string; apiKey: string; baseUrl: string; model: string };
+  fallback: { enabled: boolean; presetId: string; apiKey: string; baseUrl: string; model: string };
+  search: { tavilyKey: string; preferLocal: boolean };
+}
+
+function text(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+/** Read the three credential blobs. Never logs a value. */
+async function loadSetup(): Promise<SetupValues> {
+  const fallbackPreset = PROVIDER_PRESETS[1] ?? PROVIDER_PRESETS[0]!;
+  const base: SetupValues = {
+    primary: { presetId: PROVIDER_PRESETS[0]!.id, apiKey: "", baseUrl: "", model: "" },
+    fallback: {
+      enabled: false,
+      presetId: fallbackPreset.id,
+      apiKey: "",
+      baseUrl: fallbackPreset.baseUrl,
+      model: fallbackPreset.model,
+    },
+    search: { tavilyKey: "", preferLocal: false },
+  };
+  try {
+    const stored = (await browser.storage.local.get([
+      KEYS.primary,
+      KEYS.fallback,
+      KEYS.search,
+    ])) as Record<string, unknown>;
+
+    const p = (stored[KEYS.primary] ?? {}) as Record<string, unknown>;
+    base.primary = {
+      presetId: text(p["presetId"], base.primary.presetId),
+      apiKey: text(p["apiKey"]),
+      baseUrl: text(p["baseUrl"], PROVIDER_PRESETS[0]!.baseUrl),
+      model: text(p["model"], PROVIDER_PRESETS[0]!.model),
+    };
+
+    const f = (stored[KEYS.fallback] ?? {}) as Record<string, unknown>;
+    base.fallback = {
+      enabled: typeof f["apiKey"] === "string" && f["apiKey"] !== "",
+      presetId: text(f["presetId"], base.fallback.presetId),
+      apiKey: text(f["apiKey"]),
+      baseUrl: text(f["baseUrl"], base.fallback.baseUrl),
+      model: text(f["model"], base.fallback.model),
+    };
+
+    const s = (stored[KEYS.search] ?? {}) as Record<string, unknown>;
+    base.search = {
+      tavilyKey: text(s["tavilyKey"]),
+      preferLocal: s["preferLocal"] === true,
+    };
+  } catch {
+    /* first run: the defaults above are already honest */
+  }
+  return base;
+}
 
 interface LiveStatus {
   id: string;
@@ -42,6 +109,44 @@ interface AppState {
   reminders?: { id: string; title: string; dueAt: number; done: boolean }[];
   usage?: string;
   events?: ActivityEvent[];
+  integrations?: { id: string; name: string; category: string; status: string }[];
+}
+
+/**
+ * Brand colours and monograms for the connector catalogue.
+ *
+ * Kept here rather than in the background so the runtime never needs to know how
+ * a service is presented; the screen still owns the tile.
+ */
+const BRAND: Record<string, { color: string; mark: string }> = {
+  google: { color: "#4285F4", mark: "G" },
+  github: { color: "#24292F", mark: "GH" },
+  notion: { color: "#111111", mark: "N" },
+  youtube: { color: "#FF0033", mark: "▶" },
+  slack: { color: "#4A154B", mark: "S" },
+  discord: { color: "#5865F2", mark: "D" },
+  linear: { color: "#5E6AD2", mark: "L" },
+  spotify: { color: "#1DB954", mark: "♫" },
+};
+
+function toIntegrationRow(row: {
+  id: string;
+  name: string;
+  category: string;
+  status: string;
+}): IntegrationRow {
+  const brand = BRAND[row.id] ?? { color: "#737373", mark: row.name.slice(0, 2) };
+  const connected = row.status === "connected";
+  return {
+    id: row.id,
+    name: row.name,
+    category: (row.category === "Development" || row.category === "Social"
+      ? row.category
+      : "Productivity") as IntegrationRow["category"],
+    color: brand.color,
+    mark: brand.mark,
+    status: connected ? "connected" : "connect",
+  };
 }
 
 /** The one channel from the panel to the runtime. */
@@ -88,6 +193,40 @@ function SidePanel() {
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [state, setState] = useState<AppState>({});
 
+  // The in-panel setup form. Keys are edited here, never on the options page.
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [setup, setSetup] = useState<SetupValues | null>(null);
+  const [setupStatus, setSetupStatus] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (setupOpen) void loadSetup().then(setSetup);
+  }, [setupOpen]);
+
+  /** Write the three blobs. A disabled fallback is removed rather than stored empty. */
+  async function saveSetup(values: SetupValues): Promise<void> {
+    try {
+      await browser.storage.local.set({
+        [KEYS.primary]: values.primary,
+        [KEYS.search]: values.search,
+      });
+      if (values.fallback.enabled) {
+        await browser.storage.local.set({
+          [KEYS.fallback]: {
+            presetId: values.fallback.presetId,
+            apiKey: values.fallback.apiKey,
+            baseUrl: values.fallback.baseUrl,
+            model: values.fallback.model,
+          },
+        });
+      } else {
+        await browser.storage.local.remove(KEYS.fallback);
+      }
+      setSetupStatus("Saved — the runtime picks this up on your next command.");
+    } catch (error) {
+      setSetupStatus(`Could not save: ${error instanceof Error ? error.message : "unknown error"}`);
+    }
+  }
+
   useEffect(() => {
     const onMessage = (raw: unknown): undefined => {
       const message = raw as
@@ -120,6 +259,12 @@ function SidePanel() {
       if (message.type === "diggy:state" && message.state) {
         setState(message.state);
       }
+
+      // The runtime asked for the setup form (a button, or the model telling the
+      // user where to paste a key).
+      if (message.type === "diggy:setup") {
+        setSetupOpen(true);
+      }
       return undefined;
     };
 
@@ -130,7 +275,8 @@ function SidePanel() {
   }, []);
 
   return (
-    <Dashboard
+    <>
+      <Dashboard
       onSettings={() => {
         void browser.runtime.openOptionsPage();
       }}
@@ -139,6 +285,7 @@ function SidePanel() {
       {...(liveStatus ? { liveStatus } : {})}
       {...(state.watches ? { watches: state.watches.map(toWatchRow) } : {})}
       {...(state.events ? { events: state.events } : {})}
+      {...(state.integrations ? { integrations: state.integrations.map(toIntegrationRow) } : {})}
       vault={{
         ...(state.vault ? { status: state.vault } : {}),
         onUnlock: (passphrase) => {
@@ -172,7 +319,26 @@ function SidePanel() {
             },
           }
         : {})}
-    />
+      />
+      {setupOpen && setup ? (
+        <SetupPanel
+          primary={setup.primary}
+          fallback={setup.fallback}
+          search={setup.search}
+          presets={PROVIDER_PRESETS.map((preset) => ({
+            id: preset.id,
+            label: preset.label,
+            baseUrl: preset.baseUrl,
+            model: preset.model,
+            sttModel: preset.sttModel,
+            needsKey: preset.needsKey,
+          }))}
+          onSave={saveSetup}
+          {...(setupStatus !== undefined ? { status: setupStatus } : {})}
+          onClose={() => setSetupOpen(false)}
+        />
+      ) : null}
+    </>
   );
 }
 

@@ -56,6 +56,7 @@ export * from "./app/format.js";
 export * from "./app/sampleData.js";
 export * from "./app/ScreenHeader.js";
 export * from "./app/ScreenState.js";
+export * from "./app/SetupPanel.js";
 export * from "./app/Sidebar.js";
 export * from "./app/CommandPalette.js";
 export * from "./app/Dashboard.js";
