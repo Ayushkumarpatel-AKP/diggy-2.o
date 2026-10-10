@@ -105,6 +105,8 @@ interface Confirmation {
 /** The one snapshot the background broadcasts — see `broadcastState`. */
 interface AppState {
   vault?: { exists: boolean; unlocked: boolean };
+  /** Present only while the vault is unlocked. */
+  vaultProfile?: Record<string, unknown>;
   watches?: { id: string; url: string; kind: string; intervalSec: number }[];
   reminders?: { id: string; title: string; dueAt: number; done: boolean }[];
   usage?: string;
@@ -251,6 +253,7 @@ function SidePanel() {
             style?: string;
             confirmation?: Confirmation | null;
             state?: AppState;
+            vaultProfile?: Record<string, unknown>;
             card?: {
               title: string;
               detail?: string;
@@ -346,6 +349,11 @@ function SidePanel() {
         : {})}
       vault={{
         ...(state.vault ? { status: state.vault } : {}),
+        // Without the profile the screen unlocks into an empty page.
+        ...(state.vaultProfile ? { profile: state.vaultProfile } : {}),
+        onToggleVisibility: (key: string, visibility: string) => {
+          send({ intent: "vault.visibility", text: `${key}:${visibility}` });
+        },
         onUnlock: (passphrase) => {
           send({ intent: "vault.unlock", text: passphrase });
         },

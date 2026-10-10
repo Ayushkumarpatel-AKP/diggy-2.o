@@ -547,8 +547,15 @@ async function confirmSubmit(id: string | undefined): Promise<void> {
 async function broadcastState(): Promise<void> {
   const deps = runtime?.toolDeps();
   let vaultStatus: { exists: boolean; unlocked: boolean } = { exists: false, unlocked: false };
+  /*
+   * The profile has to travel with the status. It did not before, so unlocking the
+   * vault broadcast `{exists, unlocked}` and nothing else — the screen had no
+   * fields to draw, which is why the Vault looked broken even when it opened.
+   */
+  let vaultProfile: unknown;
   try {
     vaultStatus = await vault.status();
+    if (vaultStatus.unlocked) vaultProfile = await vault.profile();
   } catch {
     /* no vault yet is a normal state, not an error */
   }
@@ -587,6 +594,7 @@ async function broadcastState(): Promise<void> {
     type: "diggy:state",
     state: {
       vault: vaultStatus,
+      ...(vaultProfile !== undefined ? { vaultProfile } : {}),
       watches: deps ? deps.watches.list().map((entry) => entry.spec) : [],
       reminders: deps ? deps.reminders.list() : [],
       usage: usageLine,
@@ -756,6 +764,20 @@ async function handleCommand(intent: string | undefined, text?: string): Promise
       await toTab({ action: "status", text: "That watch action isn't supported." });
     }
 
+    await broadcastState();
+    return;
+  }
+  if (intent === "vault.visibility") {
+    // `key:shared` or `key:locked` — the only field-level control the screen offers.
+    const [key, visibility] = (text ?? "").split(":");
+    if (key && (visibility === "shared" || visibility === "locked")) {
+      try {
+        await vault.setVisibility(key, visibility);
+        await toTab({ action: "status", text: `${key} is now ${visibility}.` });
+      } catch {
+        await toTab({ action: "status", text: `Couldn't change ${key}.` });
+      }
+    }
     await broadcastState();
     return;
   }
