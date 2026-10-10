@@ -54,6 +54,15 @@ export interface ToolkitDeps {
     targetUrl?: string;
     thumbnailUrl?: string;
   }) => Promise<boolean>;
+  /**
+   * May the agent navigate to this URL right now?
+   *
+   * The host answers, because it is the only place that knows what the user
+   * actually said. It returns true when they named the target, and otherwise asks
+   * them — which is the enforcement behind "never open a site the command did not
+   * require".
+   */
+  allowNavigation?: (url: string, reason?: string) => Promise<boolean>;
 }
 
 export interface Toolkit {
@@ -142,7 +151,7 @@ function fetchPageTool(fetchPage: NonNullable<ToolkitDeps["fetchPage"]>): AgentT
   return {
     schema: schema(
       "fetchPage",
-      "Read one web page as clean text when you already have its URL.",
+      "Read one web page as text when you already have its URL. This does not open anything.",
       { url: { type: "string", description: "Absolute URL." } },
       ["url"],
     ),
@@ -151,6 +160,49 @@ function fetchPageTool(fetchPage: NonNullable<ToolkitDeps["fetchPage"]>): AgentT
       if (url === "") return { ok: false, error: "A url is required." };
       const result = await fetchPage(url);
       return result.ok ? { ok: true, content: result.text } : { ok: false, error: result.error };
+    },
+  };
+}
+
+/**
+ * `openUrl` — the only way to navigate, and it is gated.
+ *
+ * The model deliberately does not have the raw `navigate` verb: an ungated
+ * navigation is what let a question end up opening YouTube. This tool consults
+ * the host's rule — a target the user actually named goes straight through, and
+ * anything the model thought of by itself needs the user's approval first.
+ */
+function openUrlTool(
+  page: PageBridge,
+  allowNavigation: ToolkitDeps["allowNavigation"],
+): AgentToolShape {
+  return {
+    schema: schema(
+      "openUrl",
+      "Go to a specific web address. This CHANGES what the user is looking at. You may only reach for this when the user asked to go somewhere; if they asked a question, answer or search instead of opening anything.",
+      {
+        url: { type: "string", description: "Absolute URL to open." },
+        reason: { type: "string", description: "One short sentence: why the user needs this page." },
+      },
+      ["url"],
+    ),
+    run: async (args) => {
+      const url = stringArg(args, "url");
+      if (url === "") return { ok: false, error: "A url is required." };
+      const reason = stringArg(args, "reason");
+
+      const permitted = allowNavigation ? await allowNavigation(url, reason) : false;
+      if (!permitted) {
+        return {
+          ok: false,
+          error:
+            "The user did not approve opening that page. Answer from what you already have, or ask them first.",
+        };
+      }
+      const navigated = await page.invoke("navigate", { url });
+      return navigated.ok
+        ? { ok: true, content: `Opened ${url}.` }
+        : { ok: false, error: navigated.error ?? "Could not open that page." };
     },
   };
 }
@@ -474,6 +526,7 @@ export async function createToolkit(deps: ToolkitDeps): Promise<Toolkit> {
 
   tools.push(notifyTool(deps.onNotify));
   tools.push(...videoTools(page, deps.search, deps.approve));
+  if (deps.allowNavigation) tools.push(openUrlTool(page, deps.allowNavigation));
 
   if (deps.search) tools.push(searchTool(deps.search));
   if (deps.fetchPage) tools.push(fetchPageTool(deps.fetchPage));

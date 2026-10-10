@@ -136,9 +136,13 @@ export function registryToAgentTools(
 
 /**
  * The registry names the agent is given. Curated from the full catalogue: the
- * act verbs plus the two reads that make a page legible, and `goBack` so a wrong
- * navigation is recoverable. `pressKey` is left out because an `Enter` inside a
- * form is a submit by another name — the user presses those.
+ * act verbs plus the reads that make a page legible.
+ *
+ * Two are deliberately **left out**:
+ * - `pressKey`, because an `Enter` inside a form is a submit by another name;
+ * - `navigate`, because an ungated navigation is the whole bug this guards
+ *   against. Navigating goes through the `openUrl` tool instead, which cannot run
+ *   them unless the user named the target or approves it.
  */
 export const AGENT_ACTION_TOOLS: readonly string[] = [
   'snapshot',
@@ -150,6 +154,5 @@ export const AGENT_ACTION_TOOLS: readonly string[] = [
   'fill',
   'scroll',
   'waitFor',
-  'navigate',
   'goBack',
 ];

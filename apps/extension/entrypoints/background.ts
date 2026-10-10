@@ -274,7 +274,37 @@ function requestApproval(
   });
 }
 
-/** Answer a pending approval. Returns false when the id is not one. */
+/** What the user actually typed, for the navigation rule below. */
+let currentGoal = "";
+
+/**
+ * The hard navigation rule.
+ *
+ * The agent has no raw `navigate` tool, so every navigation arrives here. If the
+ * user named the target — "open youtube.com", "go to the docs" — it is their own
+ * instruction and goes straight through. If the model thought of the site by
+ * itself, the user is asked first. That is what stops a *question* from opening
+ * YouTube, and it is a rule the model cannot talk its way around, unlike a prompt.
+ */
+async function allowNavigation(url: string, reason?: string): Promise<boolean> {
+  let host = "";
+  try {
+    host = new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return false;
+  }
+
+  const said = currentGoal.toLowerCase();
+  const bare = host.split(".")[0] ?? host;
+  const named = said.includes(host) || (bare.length > 3 && said.includes(bare));
+  if (named) return true;
+
+  return requestApproval(
+    `Open ${host}?`,
+    reason ?? "This changes what you are looking at — allow it?",
+    { targetUrl: url },
+  );
+}
 function answerApproval(id: string, approved: boolean): boolean {
   const resolve = pendingApprovals.get(id);
   if (!resolve) return false;
@@ -380,6 +410,7 @@ async function buildAgent(context?: string): Promise<PreparedRun | null> {
         ...(request.targetUrl ? { targetUrl: request.targetUrl } : {}),
         ...(request.thumbnailUrl ? { thumbnailUrl: request.thumbnailUrl } : {}),
       }),
+    allowNavigation,
     ...(context ? { context } : {}),
   });
 
@@ -432,6 +463,8 @@ async function pageContext(): Promise<string | undefined> {
 
 /** Run one goal through the agent loop and report the outcome. */
 async function runGoal(goal: string, context?: string): Promise<void> {
+  // The navigation rule needs to know what the user actually asked for.
+  currentGoal = goal;
   const prepared = await buildAgent(context);
   if (!prepared) return;
 
