@@ -21,7 +21,7 @@ import type { AvatarState } from "@diggy/shared";
 /** Messages the background sends to drive the on-page avatar. */
 interface AvatarMessage {
   type: "diggy:avatar";
-  action: "say" | "status" | "play";
+  action: "say" | "status" | "play" | "mount" | "unmount";
   text?: string;
   state?: AvatarState;
 }
@@ -158,8 +158,37 @@ export default defineContentScript({
       corner: "bottom-left",
       fps: 24,
     };
-    const root = createRoot(mount);
-    root.render(createElement(Avatar, { ...avatarProps, ref: handleRef }));
+
+    /*
+     * The avatar is expensive: a 17 MB VRM, eleven clips and a WebGL context.
+     * Building one in every tab means every new tab pays for a scene nobody is
+     * looking at — which is exactly the lag.
+     *
+     * So it is **lazy and singular**: nothing is created here, and the background
+     * tells only the tab the user is actually looking at to mount. Switching tabs
+     * unmounts the old one first, so at most one live avatar exists at a time and
+     * the GL context is released rather than left running off-screen.
+     */
+    let root: ReturnType<typeof createRoot> | null = null;
+
+    function mountAvatar(): void {
+      if (root) return;
+      root = createRoot(mount);
+      root.render(createElement(Avatar, { ...avatarProps, ref: handleRef }));
+    }
+
+    function unmountAvatar(): void {
+      if (!root) return;
+      const current = root;
+      root = null;
+      // Clearing the ref first stops a late frame from touching a dead scene.
+      (handleRef as { current: AvatarHandle | null }).current = null;
+      try {
+        current.unmount();
+      } catch {
+        /* unmounting twice is harmless */
+      }
+    }
 
     /* --- dictation ------------------------------------------------------- */
     let language = "en-IN";
@@ -251,6 +280,17 @@ export default defineContentScript({
       }
 
       if (!isAvatarMessage(raw)) return undefined;
+
+      // Lifecycle first: everything below needs a mounted avatar.
+      if (raw.action === "mount") {
+        mountAvatar();
+        return undefined;
+      }
+      if (raw.action === "unmount") {
+        unmountAvatar();
+        return undefined;
+      }
+
       const avatar = handleRef.current;
       if (!avatar) return undefined;
       if (raw.action === "say" && raw.text) {
@@ -266,11 +306,29 @@ export default defineContentScript({
 
     browser.runtime.onMessage.addListener(onMessage);
 
+    // Announce this tab. The background decides whether it is the one the user is
+    // looking at and mounts the avatar only if so — a tab that loads in the
+    // background stays completely cold, which is what keeps opening a new tab
+    // from costing a WebGL context and a 17 MB model.
+    post({ type: "diggy:hello" });
+
+    // A tab that goes to the background stops rendering; the background also
+    // unmounts on activation change, and this covers tab-hide without switching.
+    const onVisibility = (): void => {
+      if (document.hidden) {
+        unmountAvatar();
+      } else {
+        post({ type: "diggy:hello" });
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
     ctx.onInvalidated(() => {
       browser.runtime.onMessage.removeListener(onMessage);
+      document.removeEventListener("visibilitychange", onVisibility);
       stopDictation();
       handleRef.current?.play("exit");
-      root.unmount();
+      unmountAvatar();
       host.remove();
     });
   },

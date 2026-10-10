@@ -134,6 +134,61 @@ function broadcast(message: unknown): void {
   void browser.runtime.sendMessage(message).catch(() => undefined);
 }
 
+/* --- which tab owns the avatar -------------------------------------------- */
+
+/**
+ * The id of the tab currently rendering the avatar.
+ *
+ * Exactly one tab renders it at a time. The avatar is a WebGL scene plus a 17 MB
+ * model, so letting every tab build its own made opening a new tab expensive and
+ * left invisible scenes running in the background. This is the whole fix: the
+ * background decides, and switching tabs moves the avatar rather than duplicating
+ * it.
+ */
+let avatarTabId: number | undefined;
+
+async function sendAvatar(tabId: number, action: "mount" | "unmount"): Promise<void> {
+  try {
+    await browser.tabs.sendMessage(tabId, { type: "diggy:avatar", action });
+  } catch {
+    // No content script in that tab (a browser page, a PDF, or it just closed).
+  }
+}
+
+/** Give the avatar to `tabId`, releasing whichever tab had it. */
+async function claimAvatar(tabId: number | undefined): Promise<void> {
+  if (tabId === avatarTabId) return;
+  const previous = avatarTabId;
+  avatarTabId = tabId;
+  if (previous !== undefined && previous !== tabId) await sendAvatar(previous, "unmount");
+  if (tabId !== undefined) await sendAvatar(tabId, "mount");
+}
+
+/** Re-point the avatar at whatever tab is focused now. */
+async function syncAvatarToActiveTab(): Promise<void> {
+  try {
+    const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+    await claimAvatar(tab?.id);
+  } catch {
+    // No focused window (the browser is minimised, say).
+  }
+}
+
+/**
+ * A content script announced itself. Mount only if it is the tab the user is
+ * looking at, so a link opened in a background tab stays completely cold.
+ */
+async function onTabHello(tabId: number | undefined): Promise<void> {
+  if (tabId === undefined) return;
+  try {
+    const [active] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+    if (active?.id === tabId) await claimAvatar(tabId);
+    else await sendAvatar(tabId, "unmount");
+  } catch {
+    /* ignore */
+  }
+}
+
 async function setStatus(text: string): Promise<void> {
   bus.emit(BusEvents.AvatarStatus, { text });
   await toTab({ action: "status", text });
@@ -558,6 +613,19 @@ export default defineBackground(() => {
   // Tell whoever is listening — the panel may already be open.
   void broadcastState();
 
+  // The avatar follows the user: one live scene, moved on tab switch rather than
+  // rebuilt in every tab.
+  browser.tabs.onActivated.addListener((info: { tabId: number }) => {
+    void claimAvatar(info.tabId);
+  });
+  browser.windows.onFocusChanged.addListener(() => {
+    void syncAvatarToActiveTab();
+  });
+  browser.tabs.onRemoved.addListener((tabId: number) => {
+    if (tabId === avatarTabId) avatarTabId = undefined;
+  });
+  void syncAvatarToActiveTab();
+
   browser.runtime.onInstalled.addListener(() => {
     const sidePanel = getSidePanel();
     if (!sidePanel) return;
@@ -572,11 +640,18 @@ export default defineBackground(() => {
     runtime: browser.runtime as unknown as RuntimeMessageApi,
   });
 
-  browser.runtime.onMessage.addListener((raw: unknown) => {
+  browser.runtime.onMessage.addListener((raw: unknown, sender?: { tab?: { id?: number } }) => {
     const message = raw as
       | { type?: string; intent?: string; text?: string; confirmationId?: string }
       | undefined;
     if (!message) return undefined;
+
+    // A content script announcing itself: mount the avatar only if this is the
+    // tab the user is looking at.
+    if (message.type === "diggy:hello") {
+      void onTabHello(sender?.tab?.id);
+      return undefined;
+    }
 
     // The side panel's command channel. (The Action Engine's own messages use
     // `diggy:action` and are handled in the content script, not here.)
