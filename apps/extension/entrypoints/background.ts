@@ -20,6 +20,7 @@ import { vaultTools } from "../src/vault-tools.js";
 import { emptyVaultData } from "@diggy/vault";
 import { createConnectors } from "../src/connectors/index.js";
 import type { SearchOutcome } from "../src/search-web.js";
+import { createTabRegistry } from "../src/tab-registry.js";
 import { bindPushToTalk, type CommandsApi, type RuntimeMessageApi } from "../src/shortcut.js";
 
 /**
@@ -64,6 +65,8 @@ const usage = createUsageLedger();
 const searchCache = createTtlCache<SearchOutcome>(5 * 60 * 1000);
 /** The encrypted profile DIGGY may answer from. */
 const vault = createVaultRuntime();
+/** Every open tab, so the agent can act on the one the user meant. */
+const tabRegistry = createTabRegistry();
 
 /**
  * Confirmations waiting on a button press, keyed by id.
@@ -423,6 +426,26 @@ async function buildAgent(context?: string): Promise<PreparedRun | null> {
         ...(request.thumbnailUrl ? { thumbnailUrl: request.thumbnailUrl } : {}),
       }),
     allowNavigation,
+    tabs: {
+      list: () =>
+        tabRegistry
+          .list()
+          .map((tab) => ({ id: tab.id, url: tab.url, title: tab.title, active: tab.active })),
+      resolve: (describe: string) => {
+        const found = tabRegistry.resolve(describe);
+        return {
+          ...(found.best
+            ? { best: { id: found.best.id, url: found.best.url, title: found.best.title } }
+            : {}),
+          candidates: found.candidates.map((tab) => ({
+            id: tab.id,
+            url: tab.url,
+            title: tab.title,
+          })),
+          ambiguous: found.ambiguous,
+        };
+      },
+    },
     ...(context ? { context } : {}),
   });
 
@@ -642,6 +665,9 @@ async function broadcastState(): Promise<void> {
     state: {
       vault: vaultStatus,
       ...(vaultProfile !== undefined ? { vaultProfile } : {}),
+      // So the panel — and the agent — can see the whole browser, not just the
+      // tab that happens to be focused.
+      tabs: tabRegistry.list(),
       watches: deps ? deps.watches.list().map((entry) => entry.spec) : [],
       reminders: deps ? deps.reminders.list() : [],
       usage: usageLine,
@@ -880,6 +906,11 @@ export default defineBackground(() => {
     if (tabId === avatarTabId) avatarTabId = undefined;
   });
   void syncAvatarToActiveTab();
+
+  // Follow the browser's tabs. Without this the agent only ever knew the active
+  // one, which is why it could not find a form among several open tabs.
+  tabRegistry.install();
+  void tabRegistry.refresh();
 
   browser.runtime.onInstalled.addListener(() => {
     const sidePanel = getSidePanel();

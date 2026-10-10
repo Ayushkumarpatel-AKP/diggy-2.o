@@ -63,6 +63,21 @@ export interface ToolkitDeps {
    * require".
    */
   allowNavigation?: (url: string, reason?: string) => Promise<boolean>;
+  /**
+   * The browser's open tabs.
+   *
+   * Without this the agent could only ever see the active tab, so "the Google Form
+   * that is open" was unanswerable and it acted on whatever tab happened to be
+   * focused.
+   */
+  tabs?: {
+    list(): { id: number; url: string; title: string; active: boolean }[];
+    resolve(describe: string): {
+      best?: { id: number; url: string; title: string };
+      candidates: { id: number; url: string; title: string }[];
+      ambiguous: boolean;
+    };
+  };
 }
 
 export interface Toolkit {
@@ -160,6 +175,61 @@ function fetchPageTool(fetchPage: NonNullable<ToolkitDeps["fetchPage"]>): AgentT
       if (url === "") return { ok: false, error: "A url is required." };
       const result = await fetchPage(url);
       return result.ok ? { ok: true, content: result.text } : { ok: false, error: result.error };
+    },
+  };
+}
+
+/**
+ * `listTabs` — let the agent see the browser before it decides anything.
+ *
+ * This is the "inspect the context first" requirement made concrete: with it the
+ * model can find the tab the user meant, instead of assuming the active one.
+ */
+function listTabsTool(tabs: NonNullable<ToolkitDeps["tabs"]>): AgentToolShape {
+  return {
+    schema: schema(
+      "listTabs",
+      "List the browser tabs the user has open, with their titles and URLs. Use this FIRST whenever the request refers to a page ('the form that is open', 'my GitHub tab') so you act on the right one instead of whichever tab happens to be focused.",
+      {
+        describe: {
+          type: "string",
+          description:
+            "Optional: what the user called the page. Returns the best match and whether it is ambiguous.",
+        },
+      },
+    ),
+    run: async (args) => {
+      const describe = stringArg(args, "describe");
+
+      if (describe !== "") {
+        const found = tabs.resolve(describe);
+        if (!found.best) {
+          const lines = found.candidates.map((tab) => `- ${tab.title} — ${tab.url}`);
+          return {
+            ok: true,
+            content:
+              lines.length > 0
+                ? `No tab clearly matches "${describe}". Open tabs:\n${lines.join("\n")}\n\nAsk the user which one, or use listTabs with a better description.`
+                : "No matching tab. Ask the user to open the page.",
+          };
+        }
+        const extra = found.ambiguous
+          ? "\n\nNote: more than one open tab matches this. Confirm with the user before acting."
+          : "";
+        return {
+          ok: true,
+          content: `Best match: "${found.best.title}" — ${found.best.url} (tab ${found.best.id}).${extra}`,
+        };
+      }
+
+      const open = tabs.list();
+      if (open.length === 0) return { ok: true, content: "No readable tabs are open." };
+      return {
+        ok: true,
+        content: open
+          .map((tab) => `${tab.active ? "* " : "- "}${tab.title} — ${tab.url} (tab ${tab.id})`)
+          .join("\n"),
+      };
     },
   };
 }
@@ -527,6 +597,7 @@ export async function createToolkit(deps: ToolkitDeps): Promise<Toolkit> {
   tools.push(notifyTool(deps.onNotify));
   tools.push(...videoTools(page, deps.search, deps.approve));
   if (deps.allowNavigation) tools.push(openUrlTool(page, deps.allowNavigation));
+  if (deps.tabs) tools.push(listTabsTool(deps.tabs));
 
   if (deps.search) tools.push(searchTool(deps.search));
   if (deps.fetchPage) tools.push(fetchPageTool(deps.fetchPage));
