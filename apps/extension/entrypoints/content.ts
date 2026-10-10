@@ -306,20 +306,20 @@ export default defineContentScript({
 
     browser.runtime.onMessage.addListener(onMessage);
 
-    // Announce this tab. The background decides whether it is the one the user is
-    // looking at and mounts the avatar only if so — a tab that loads in the
-    // background stays completely cold, which is what keeps opening a new tab
-    // from costing a WebGL context and a 17 MB model.
+    // A visible tab renders the avatar; a hidden one does not. That is the
+    // primary rule, and it is deliberately local: the earlier version waited for
+    // the background to reply "mount", so a single missed round trip left the
+    // user with no avatar and nothing to retry it.
+    //
+    // The background still unmounts non-active tabs on activation change, so the
+    // "only one live avatar" guarantee holds — this just makes it robust when the
+    // handshake does not land.
+    if (!document.hidden) mountAvatar();
     post({ type: "diggy:hello" });
 
-    // A tab that goes to the background stops rendering; the background also
-    // unmounts on activation change, and this covers tab-hide without switching.
     const onVisibility = (): void => {
-      if (document.hidden) {
-        unmountAvatar();
-      } else {
-        post({ type: "diggy:hello" });
-      }
+      if (document.hidden) unmountAvatar();
+      else mountAvatar();
     };
     document.addEventListener("visibilitychange", onVisibility);
 

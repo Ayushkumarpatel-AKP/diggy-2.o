@@ -1691,12 +1691,13 @@
    * `overflow-x: auto` computes `overflow-y` to `auto` too, the pills clipped.) */
   .dg-tabbar {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
     flex: 0 0 auto;
-    overflow-x: auto;
-    overflow-y: hidden;
-    overscroll-behavior-x: contain;
-    -webkit-overflow-scrolling: touch;
+    /* Wrapped, not horizontally scrolled: with eight tabs a single scrolling row
+       pushed the last one — API Keys — off the right edge, with nothing to
+       suggest it was there. */
+    overflow: visible;
     padding: 10px 14px;
     background: var(--dg-surface);
     border-bottom: 1px solid var(--dg-line);
