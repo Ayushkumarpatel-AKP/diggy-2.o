@@ -278,7 +278,9 @@ function SidePanel() {
     <>
       <Dashboard
       onSettings={() => {
-        void browser.runtime.openOptionsPage();
+        // The in-panel setup form, not the options page — that is the whole point
+        // of this change.
+        setSetupOpen(true);
       }}
       onAction={(intent) => send({ intent })}
       onAsk={(text) => send({ intent: "ask", text })}
