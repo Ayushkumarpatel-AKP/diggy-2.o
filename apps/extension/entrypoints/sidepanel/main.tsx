@@ -351,9 +351,6 @@ function SidePanel() {
         ...(state.vault ? { status: state.vault } : {}),
         // Without the profile the screen unlocks into an empty page.
         ...(state.vaultProfile ? { profile: state.vaultProfile } : {}),
-        onToggleVisibility: (key: string, visibility: string) => {
-          send({ intent: "vault.visibility", text: `${key}:${visibility}` });
-        },
         onUnlock: (passphrase) => {
           send({ intent: "vault.unlock", text: passphrase });
         },
