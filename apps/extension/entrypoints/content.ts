@@ -154,7 +154,9 @@ export default defineContentScript({
 
     const avatarProps: AvatarProps = {
       assetBase: resolveUrl("assets/avatar"),
-      size: 140,
+      // Bigger than the original 140 so the speech bubble above the character has
+      // room for a wrapped line and a clickable link.
+      size: 200,
       corner: "bottom-left",
       fps: 24,
     };

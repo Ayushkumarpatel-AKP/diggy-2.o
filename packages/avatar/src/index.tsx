@@ -159,6 +159,31 @@ function horizontalEdge(corner: AvatarCorner, offset: number): CSSProperties {
  *
  * `diggy_U.vrm` is the character; its clips come from `assets/avatar/animations`.
  */
+/**
+ * Turn bare URLs in a status line into real links.
+ *
+ * The status API is a string, so a rich result card cannot be drawn here — but a
+ * link can at least be made visible and clickable instead of being one more run
+ * of text that gets clipped.
+ */
+function linkify(text: string): ReactNode[] {
+  return text.split(/(https?:\/\/[^\s)"'<>]+)/g).map((part, index) =>
+    /^https?:\/\//.test(part) ? (
+      <a
+        key={`${index}-${part}`}
+        href={part}
+        target="_blank"
+        rel="noreferrer noopener"
+        style={{ color: "#c9b6ff", textDecoration: "underline", pointerEvents: "auto" }}
+      >
+        {part.length > 60 ? `${part.slice(0, 57)}…` : part}
+      </a>
+    ) : (
+      part
+    ),
+  );
+}
+
 export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
   {
     assetBase = "/assets/avatar",
@@ -286,21 +311,31 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
           data-diggy-avatar-status=""
           style={{
             position: "absolute",
-            ...verticalEdge(corner, boxHeight + 6),
+            ...verticalEdge(corner, boxHeight + 8),
             ...horizontalEdge(corner, 0),
-            maxWidth: size * 1.4,
-            padding: "4px 10px",
-            borderRadius: 12,
-            background: "rgba(17, 17, 24, 0.82)",
+            /*
+             * Speech-bubble sizing.
+             *
+             * It used to be `nowrap` with `overflow: hidden`, so every status was
+             * a single clipped line and a link could never be read, let alone
+             * clicked. It now wraps, is wide enough to be worth reading, and
+             * accepts pointer events so a link inside it works.
+             */
+            maxWidth: Math.max(260, size * 2),
+            padding: "9px 13px",
+            borderRadius: 14,
+            borderBottomLeftRadius: corner === "bottom-left" ? 4 : 14,
+            borderBottomRightRadius: corner === "bottom-right" ? 4 : 14,
+            background: "rgba(17, 17, 24, 0.9)",
             color: "#f6f4ff",
-            font: "12px/1.35 system-ui, -apple-system, Segoe UI, sans-serif",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            pointerEvents: "none",
+            font: "12.5px/1.45 system-ui, -apple-system, Segoe UI, sans-serif",
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
+            pointerEvents: "auto",
+            boxShadow: "0 6px 20px rgba(0,0,0,0.28)",
           }}
         >
-          💭 {snapshot.status}
+          💭 {linkify(snapshot.status)}
         </div>
       ) : null}
 
