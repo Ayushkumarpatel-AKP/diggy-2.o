@@ -27,7 +27,16 @@ export default defineConfig({
       { resources: ["assets/avatar/animations/*"], matches: ["<all_urls>"] },
     ],
     content_security_policy: {
-      extension_pages: "script-src 'self'; object-src 'self'",
+      /*
+       * `'wasm-unsafe-eval'` is required, and its absence is why the Vault could
+       * never be created: Argon2id comes from hash-wasm, which is WebAssembly, and
+       * MV3's default `script-src 'self'` refuses to compile a wasm module —
+       * "WebAssembly.compile() ... violates ... script-src 'self'".
+       *
+       * This is the documented, narrow allowance for WebAssembly in MV3. It does
+       * NOT permit `eval` of JavaScript.
+       */
+      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
     },
     options_ui: {
       page: "settings.html",

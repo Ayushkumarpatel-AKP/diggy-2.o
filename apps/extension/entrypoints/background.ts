@@ -296,9 +296,21 @@ async function allowNavigation(url: string, reason?: string): Promise<boolean> {
 
   const said = currentGoal.toLowerCase();
   const bare = host.split(".")[0] ?? host;
+
+  // They named the site…
   const named = said.includes(host) || (bare.length > 3 && said.includes(bare));
   if (named) return true;
 
+  /*
+   * …or they plainly asked to go somewhere. "open yt" names YouTube by an
+   * abbreviation and "play that video" names nothing, but both are navigation
+   * instructions — asking again there is the over-confirming the user complained
+   * about. A navigation verb is the signal, and a question has none.
+   */
+  const NAV_VERBS = /\b(open|go to|goto|visit|navigate|launch|browse|play|watch|show me)\b/;
+  if (NAV_VERBS.test(said)) return true;
+
+  // No verb and no name: the model chose this site by itself, so ask.
   return requestApproval(
     `Open ${host}?`,
     reason ?? "This changes what you are looking at — allow it?",
@@ -896,12 +908,28 @@ export default defineBackground(() => {
       return undefined;
     }
 
-    // The avatar's own card buttons. "Open" is a real navigation, so it goes
-    // through the same path as any other command.
+    /*
+     * The avatar's card buttons.
+     *
+     * "Open" used to re-enter the agent loop with the words "Open <url>", which
+     * meant the model got another turn to think about it and could answer instead
+     * of navigating — that is the "click, then it redirects" behaviour. The user
+     * has already decided by pressing the button, so this navigates directly.
+     */
     if (message.type === "diggy:card-action") {
       const action = (raw as { action?: string }).action;
       const url = (raw as { url?: string }).url;
-      if (action === "open" && url) void runGoal(`Open ${url}`);
+      if (action === "open" && url) {
+        void (async () => {
+          try {
+            const tabId = await activeTabId();
+            if (tabId != null) await browser.tabs.update(tabId, { url });
+            await toTab({ action: "card", card: null });
+          } catch {
+            await toTab({ action: "status", text: "Couldn't open that page." });
+          }
+        })();
+      }
       return undefined;
     }
 
