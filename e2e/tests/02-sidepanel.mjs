@@ -1,17 +1,17 @@
 /**
- * Test — the side panel renders the 7-tab dashboard and the command palette opens.
+ * Test — the side panel renders the 8-tab dashboard and the command palette opens.
  *
  * Targets the real `sidepanel.html` from the extension origin: nav
- * `[aria-label="Primary"]` with the 7 `NAV_TABS`, the brand wordmark, per-tab
+ * `[aria-label="Primary"]` with the 8 `NAV_TABS`, the brand wordmark, per-tab
  * screen titles, and the Alt+K command palette dialog.
  */
 import { assert, openPanel } from '../harness.mjs';
 
 export const name = 'sidepanel-renders';
-export const description = 'sidepanel.html shows the 7-tab nav, screen titles, and the Alt+K command palette';
+export const description = 'sidepanel.html shows the 8-tab nav, screen titles, and the Alt+K command palette';
 export const kind = 'browser';
 
-const EXPECTED_TABS = ['Home', 'Assistant', 'Monitor', 'Actions', 'Integrations', 'Vault', 'Activity'];
+const EXPECTED_TABS = ['Home', 'Assistant', 'Monitor', 'Actions', 'Integrations', 'Vault', 'Activity', 'API Keys'];
 
 export async function run(env) {
   const app = await env.launch();

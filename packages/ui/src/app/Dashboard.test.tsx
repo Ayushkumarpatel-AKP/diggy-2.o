@@ -13,10 +13,11 @@ const MARKER: Record<NavTabId, string> = {
   integrations: "Connect your tools",
   vault: "quick access and auto-fill",
   activity: "A record of everything",
+  apikeys: "Paste your API keys here",
 };
 
 describe("Dashboard", () => {
-  it("exposes exactly the 7 NAV_TABS in order", () => {
+  it("exposes exactly the 8 NAV_TABS in order", () => {
     expect(NAV_TABS.map((tab) => tab.id)).toEqual([
       "home",
       "assistant",
@@ -25,6 +26,7 @@ describe("Dashboard", () => {
       "integrations",
       "vault",
       "activity",
+      "apikeys",
     ]);
   });
 

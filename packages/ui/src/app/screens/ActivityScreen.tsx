@@ -4,16 +4,21 @@
  * // INTERFACE FOR INTEGRATION
  * interface ActivityScreenProps { onCommand(label: string, intent?: string): void;
  *   state?: ScreenState; preview?: boolean; events?: ActivityEvent[] }
+ * // The range selector is a real `Menu` that filters the timeline locally —
+ * // no runtime intent, nothing leaves the panel.
  * // END INTERFACE FOR INTEGRATION
  */
+import { useState } from "react";
 import type { ActivityEvent } from "@diggy/shared";
 
 import { Icon } from "../../Icon.js";
 import { Panel } from "../../primitives/Card.js";
+import { Menu } from "../../primitives/Menu.js";
 import { formatClock } from "../format.js";
 import { ScreenHeader } from "../ScreenHeader.js";
 import { StateBlock, PreviewBadge, type ScreenState } from "../ScreenState.js";
 import { ACTIVITY_ICON, ACTIVITY_TONE, sampleActivity } from "../sampleData.js";
+import { ACTIVITY_RANGES, filterEventsByRange } from "./screenHelpers.js";
 
 export interface ActivityScreenProps {
   onCommand: (label: string, intent?: string) => void;
@@ -28,6 +33,10 @@ export function ActivityScreen({
   preview = true,
   events = sampleActivity,
 }: ActivityScreenProps) {
+  const [range, setRange] = useState<string>("today");
+  const visible = filterEventsByRange(events, range);
+  const rangeLabel =
+    ACTIVITY_RANGES.find((entry) => entry.id === range)?.label ?? "Today";
   return (
     <>
       <ScreenHeader
@@ -37,9 +46,15 @@ export function ActivityScreen({
         subtitle="A record of everything DIGGY does."
       >
         {preview ? <PreviewBadge /> : null}
-        <button type="button" className="dg-select" onClick={() => onCommand("Activity range")}>
-          Today <Icon name="chevronDown" size={14} />
-        </button>
+        <Menu
+          label={`Activity range: ${rangeLabel}`}
+          align="right"
+          items={ACTIVITY_RANGES.map((entry) => ({
+            id: entry.id,
+            label: entry.label,
+            onSelect: () => setRange(entry.id),
+          }))}
+        />
       </ScreenHeader>
 
       <Panel>
@@ -65,9 +80,16 @@ export function ActivityScreen({
           />
         ) : events.length === 0 ? (
           <StateBlock state="empty" icon="activity" title="No activity yet" />
+        ) : visible.length === 0 ? (
+          <StateBlock
+            state="empty"
+            icon="activity"
+            title={`Nothing in ${rangeLabel.toLowerCase()}`}
+            message="DIGGY hasn't done anything in this range yet — widen the range above."
+          />
         ) : (
           <div className="dg-timeline">
-            {events.map((event) => (
+            {visible.map((event) => (
               <div key={event.id} className="dg-tl">
                 <div className="dg-tl__time">{formatClock(event.at)}</div>
                 <div className="dg-tl__rail">

@@ -1,5 +1,5 @@
 /**
- * DIGGY side-panel dashboard — sidebar + the 7 tabs + composer + command palette + status bubble.
+ * DIGGY side-panel dashboard — sidebar + the 8 tabs + composer + command palette + status bubble.
  * This is the single surface the extension side panel, the pop-out window and the demo all
  * render, so what you review in `apps/demo` is exactly what ships.
  *
@@ -18,13 +18,20 @@
  *   onCommand?(label: string, intent?: string): void; // explicit screen intents go verbatim
  *   preview?: boolean;                     // sample data is labelled when true (default)
  *   screenStates?: Partial<Record<NavTabId, ScreenState>>;
- *   liveStatus?: { id: string; text: string; priority?: StatusPriority; style?: BubbleStyle };
+ *   liveStatus?: { id: string; text: string; priority?: StatusPriority; style?: BubbleStyle;
+ *     max?: number };
  *   pendingConfirmation?: PendingConfirmation;
  *   onStatusPush?: (push: (update: StatusUpdate) => void) => void;
  *   metrics?: MetricData[]; alerts?: AlertData[]; watches?: WatchRow[];
  *   events?: ActivityEvent[]; integrations?: IntegrationRow[];
+ *   actions?: ActionLogRow[]; setup?: ApiKeysSetup;
  * }
  * function Dashboard(props: DashboardProps): JSX.Element;
+ * // Intents forwarded verbatim (see RUNTIME_INTENTS): ask/summarize/explain/
+ * // extract/repository/opportunities/track/voice/confirm/deny/setup.open/
+ * // integration.connect/disconnect/vault.status/vault.lock/usage/state/
+ * // chat.clear/watch.add/watch.check/watch.pause/watch.resume/watch.remove/
+ * // watch.notify. Anything else keeps the legacy onAction mapping.
  * // END INTERFACE FOR INTEGRATION
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -39,16 +46,17 @@ import {
 import { Icon, type IconName } from "../Icon.js";
 import { Button } from "../primitives/Button.js";
 import { Composer } from "../primitives/Composer.js";
-import { StatusBubble } from "../primitives/StatusBubble.js";
+import { StatusBubble, type ActionPreview } from "../primitives/StatusBubble.js";
 import { useHotkey } from "../hooks/useHotkey.js";
 import { usePopOut } from "../hooks/usePopOut.js";
 import { useStatusQueue, type StatusUpdate } from "../hooks/useStatusQueue.js";
-import type { BubbleStyle, StatusPriority } from "../hooks/statusQueue.js";
+import { LONG_STATUS_MAX, type BubbleStyle, type StatusPriority } from "../hooks/statusQueue.js";
 import { CommandPalette, type PaletteCommand } from "./CommandPalette.js";
 import { Sidebar } from "./Sidebar.js";
 import {
   sampleQuickCommands,
   sampleUser,
+  type ActionLogRow,
   type AlertData,
   type IntegrationRow,
   type MetricData,
@@ -57,6 +65,7 @@ import {
 import type { ScreenState } from "./ScreenState.js";
 import { ActionsScreen } from "./screens/ActionsScreen.js";
 import { ActivityScreen } from "./screens/ActivityScreen.js";
+import { ApiKeysScreen, type ApiKeysSetup } from "./screens/ApiKeysScreen.js";
 import { AssistantScreen } from "./screens/AssistantScreen.js";
 import { HomeScreen } from "./screens/HomeScreen.js";
 import { IntegrationsScreen } from "./screens/IntegrationsScreen.js";
@@ -69,6 +78,10 @@ export interface PendingConfirmation {
   detail?: string;
   confirmLabel?: string;
   denyLabel?: string;
+  /** Present when the runtime broadcasts an ActionPreview-shaped approval. */
+  kind?: ActionPreview["kind"];
+  targetUrl?: string;
+  thumbnailUrl?: string;
   onConfirm: () => void;
   onDeny?: () => void;
 }
@@ -78,6 +91,8 @@ export interface LiveStatus {
   text: string;
   priority?: StatusPriority;
   style?: BubbleStyle;
+  /** Clip to this many chars; defaults to the long-form cap (action lines need room). */
+  max?: number;
 }
 
 export interface DashboardProps {
@@ -113,6 +128,10 @@ export interface DashboardProps {
   watches?: WatchRow[];
   events?: ActivityEvent[];
   integrations?: IntegrationRow[];
+  /** Live action log, forwarded to the Actions screen (default `[]` there). */
+  actions?: ActionLogRow[];
+  /** Key-setup values, forwarded to the API Keys screen (absent = empty state). */
+  setup?: ApiKeysSetup;
   /**
    * Vault state and handlers, forwarded straight to the Vault screen.
    *
@@ -184,6 +203,12 @@ const RUNTIME_INTENTS = new Set([
   "usage",
   "state",
   "chat.clear",
+  "watch.add",
+  "watch.check",
+  "watch.pause",
+  "watch.resume",
+  "watch.remove",
+  "watch.notify",
 ]);
 
 /** True when `intent` names a runtime verb, ignoring any `:parameter` suffix. */
@@ -225,6 +250,8 @@ export function Dashboard({
   watches,
   events,
   integrations,
+  actions,
+  setup,
   vault,
 }: DashboardProps) {
   const [internalTab, setInternalTab] = useState<NavTabId>("home");
@@ -246,8 +273,10 @@ export function Dashboard({
       text: liveStatus.text,
       priority: liveStatus.priority,
       style: liveStatus.style,
+      // Action-describing lines get the long-form cap unless told otherwise.
+      max: liveStatus.max ?? LONG_STATUS_MAX,
     });
-  }, [liveStatus?.id, liveStatus?.text, liveStatus?.priority, liveStatus?.style, status.push]);
+  }, [liveStatus?.id, liveStatus?.text, liveStatus?.priority, liveStatus?.style, liveStatus?.max, status.push]);
 
   const stateFor = useCallback(
     (id: NavTabId): ScreenState => screenStates?.[id] ?? "ready",
@@ -418,6 +447,7 @@ export function Dashboard({
                 onCommand={handleCommand}
                 state={stateFor("actions")}
                 preview={preview}
+                {...(actions !== undefined ? { actions } : {})}
               />
             ) : null}
             {activeTab === "integrations" ? (
@@ -444,6 +474,14 @@ export function Dashboard({
                 events={events}
               />
             ) : null}
+            {activeTab === "apikeys" ? (
+              <ApiKeysScreen
+                onCommand={handleCommand}
+                state={stateFor("apikeys")}
+                preview={preview}
+                {...(setup !== undefined ? { setup } : {})}
+              />
+            ) : null}
           </div>
 
           <div className="dg-composer-dock">
@@ -465,32 +503,60 @@ export function Dashboard({
             variant="speech"
             typing={false}
             api={statusApi}
-            actions={
-              <>
-                {pendingConfirmation.detail ? (
-                  <span className="dg-bubble__detail">{pendingConfirmation.detail}</span>
-                ) : null}
-                <Button variant="primary" size="sm" onClick={pendingConfirmation.onConfirm}>
-                  {pendingConfirmation.confirmLabel ?? "Approve"}
-                </Button>
-                {pendingConfirmation.onDeny ? (
-                  <Button variant="ghost" size="sm" onClick={pendingConfirmation.onDeny}>
-                    {pendingConfirmation.denyLabel ?? "Cancel"}
-                  </Button>
-                ) : null}
-              </>
-            }
+            {...(pendingConfirmation.kind
+              ? {
+                  preview: {
+                    id: pendingConfirmation.id,
+                    kind: pendingConfirmation.kind,
+                    title: pendingConfirmation.title,
+                    ...(pendingConfirmation.detail !== undefined
+                      ? { detail: pendingConfirmation.detail }
+                      : {}),
+                    ...(pendingConfirmation.targetUrl !== undefined
+                      ? { targetUrl: pendingConfirmation.targetUrl }
+                      : {}),
+                    ...(pendingConfirmation.thumbnailUrl !== undefined
+                      ? { thumbnailUrl: pendingConfirmation.thumbnailUrl }
+                      : {}),
+                    ...(pendingConfirmation.confirmLabel !== undefined
+                      ? { confirmLabel: pendingConfirmation.confirmLabel }
+                      : {}),
+                    ...(pendingConfirmation.denyLabel !== undefined
+                      ? { denyLabel: pendingConfirmation.denyLabel }
+                      : {}),
+                  } satisfies ActionPreview,
+                  onApprove: pendingConfirmation.onConfirm,
+                  ...(pendingConfirmation.onDeny !== undefined
+                    ? { onDeny: pendingConfirmation.onDeny }
+                    : {}),
+                }
+              : {
+                  actions: (
+                    <>
+                      {pendingConfirmation.detail ? (
+                        <span className="dg-bubble__detail">{pendingConfirmation.detail}</span>
+                      ) : null}
+                      <Button variant="primary" size="sm" onClick={pendingConfirmation.onConfirm}>
+                        {pendingConfirmation.confirmLabel ?? "Approve"}
+                      </Button>
+                      {pendingConfirmation.onDeny ? (
+                        <Button variant="ghost" size="sm" onClick={pendingConfirmation.onDeny}>
+                          {pendingConfirmation.denyLabel ?? "Cancel"}
+                        </Button>
+                      ) : null}
+                    </>
+                  ),
+                })}
           />
-        ) : (
-          <StatusBubble
-            text={status.current?.text ?? "Ready — press Ctrl+Space to talk, or ask me anything."}
-            priority={status.current?.priority ?? 0}
-            variant={status.current?.style ?? "thought"}
-            collapsed={status.collapsed}
-            onToggleCollapse={status.toggleCollapse}
-            api={statusApi}
-          />
-        )}
+        ) : null}
+        <StatusBubble
+          text={status.current?.text ?? "Ready — press Ctrl+Space to talk, or ask me anything."}
+          priority={status.current?.priority ?? 0}
+          variant={status.current?.style ?? "thought"}
+          collapsed={status.collapsed}
+          onToggleCollapse={status.toggleCollapse}
+          api={statusApi}
+        />
       </div>
 
       <CommandPalette

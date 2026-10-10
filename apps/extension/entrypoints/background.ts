@@ -686,6 +686,14 @@ async function handleCommand(intent: string | undefined, text?: string): Promise
             ? `Found ${events.length} change${events.length === 1 ? "" : "s"}.`
             : "No change — it compares against the last reading.",
       });
+    } else if (verb === "watch.notify" && watchId) {
+      // The monitor already raises an OS notification plus an avatar alert on
+      // every detected change, so this explains that rather than pretending to
+      // toggle something it cannot toggle yet.
+      await toTab({
+        action: "status",
+        text: "You'll be told the moment this watch finds a change.",
+      });
     } else if (verb === "watch.remove" && watchId) {
       monitor.remove(watchId);
       await toTab({ action: "status", text: "Stopped watching that page." });

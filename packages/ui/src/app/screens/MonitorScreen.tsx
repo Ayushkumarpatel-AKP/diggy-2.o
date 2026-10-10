@@ -4,6 +4,8 @@
  * // INTERFACE FOR INTEGRATION
  * interface MonitorScreenProps { onCommand(label: string, intent?: string): void;
  *   state?: ScreenState; preview?: boolean; watches?: WatchRow[] }
+ * // Intents emitted: `watch.add`, `watch.check:<id>`, `watch.pause:<id>`,
+ * // `watch.resume:<id>`, `watch.remove:<id>`, `watch.notify:<id>`.
  * // END INTERFACE FOR INTEGRATION
  */
 import { useState } from "react";
@@ -13,11 +15,13 @@ import { Button } from "../../primitives/Button.js";
 import { Panel } from "../../primitives/Card.js";
 import { IconButton } from "../../primitives/IconButton.js";
 import { ListRow } from "../../primitives/ListRow.js";
+import { Menu } from "../../primitives/Menu.js";
 import { Pill } from "../../primitives/Pill.js";
 import { Tabs } from "../../primitives/Tabs.js";
 import { ScreenHeader } from "../ScreenHeader.js";
 import { StateBlock, PreviewBadge, type ScreenState } from "../ScreenState.js";
 import { sampleWatches, type WatchRow } from "../sampleData.js";
+import { filterWatches } from "./screenHelpers.js";
 
 export interface MonitorScreenProps {
   onCommand: (label: string, intent?: string) => void;
@@ -47,7 +51,7 @@ export function MonitorScreen({
   watches = sampleWatches,
 }: MonitorScreenProps) {
   const [tab, setTab] = useState("websites");
-  const rows = tab === "websites" ? watches : [];
+  const rows = filterWatches(watches, tab);
 
   return (
     <>
@@ -58,7 +62,7 @@ export function MonitorScreen({
         subtitle="Track websites, get notified when something important changes."
       >
         {preview ? <PreviewBadge /> : null}
-        <Button variant="primary" icon="plus" onClick={() => onCommand("Add Website", "track")}>
+        <Button variant="primary" icon="plus" onClick={() => onCommand("Add Website", "watch.add")}>
           Add Website
         </Button>
       </ScreenHeader>
@@ -130,12 +134,41 @@ export function MonitorScreen({
                   <IconButton
                     icon="bell"
                     label={`Notifications for ${watch.name}`}
-                    onClick={() => onCommand(`Notifications for ${watch.name}`)}
+                    onClick={() =>
+                      onCommand(`Notifications for ${watch.name}`, `watch.notify:${watch.spec.id}`)
+                    }
                   />
-                  <IconButton
-                    icon="more"
-                    label={`More options for ${watch.name}`}
-                    onClick={() => onCommand(`Options for ${watch.name}`)}
+                  <Menu
+                    label={`Options for ${watch.name}`}
+                    align="right"
+                    items={[
+                      {
+                        id: "check",
+                        label: "Check now",
+                        onSelect: () =>
+                          onCommand(`Check ${watch.name}`, `watch.check:${watch.spec.id}`),
+                      },
+                      watch.active
+                        ? {
+                            id: "pause",
+                            label: "Pause",
+                            onSelect: () =>
+                              onCommand(`Pause ${watch.name}`, `watch.pause:${watch.spec.id}`),
+                          }
+                        : {
+                            id: "resume",
+                            label: "Resume",
+                            onSelect: () =>
+                              onCommand(`Resume ${watch.name}`, `watch.resume:${watch.spec.id}`),
+                          },
+                      {
+                        id: "remove",
+                        label: "Remove",
+                        danger: true,
+                        onSelect: () =>
+                          onCommand(`Remove ${watch.name}`, `watch.remove:${watch.spec.id}`),
+                      },
+                    ]}
                   />
                 </>
               }

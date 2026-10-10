@@ -14,6 +14,19 @@
  *   avatar?: ReactNode;                      // avatar renderer slot (packages/avatar)
  *   api?: Pick<AvatarAPI, "status">;         // consumes AvatarAPI.status
  *   actions?: ReactNode;                     // buttons rendered under the text row
+ *   preview?: ActionPreview;                 // approval preview -> renders ActionCard
+ *   onApprove?: () => void; onDeny?: () => void;
+ * }
+ * // The confirmation the runtime broadcasts. `kind` decides which preview to show.
+ * interface ActionPreview {
+ *   id: string;
+ *   kind: "submit" | "vault" | "navigate" | "openVideo" | "connect";
+ *   title: string;
+ *   detail?: string;
+ *   targetUrl?: string;
+ *   thumbnailUrl?: string;
+ *   confirmLabel?: string;
+ *   denyLabel?: string;
  * }
  * // END INTERFACE FOR INTEGRATION
  */
@@ -22,6 +35,24 @@ import type { AvatarAPI } from "@diggy/shared";
 
 import { DiggyLogo } from "../DiggyLogo.js";
 import { PRIORITY_DOT, type StatusPriority } from "../hooks/statusQueue.js";
+import { ActionCard } from "./ActionCard.js";
+
+/**
+ * The confirmation the runtime broadcasts. `kind` decides which preview to
+ * show. This is the frozen wave-8 shape (see `agents/wave8/README.md`) —
+ * `ActionCard` (w8-parts) declares the identical interface, so a preview
+ * built here passes straight into it.
+ */
+export interface ActionPreview {
+  id: string;
+  kind: "submit" | "vault" | "navigate" | "openVideo" | "connect";
+  title: string;
+  detail?: string;
+  targetUrl?: string;
+  thumbnailUrl?: string;
+  confirmLabel?: string;
+  denyLabel?: string;
+}
 
 export interface StatusBubbleProps {
   text: string;
@@ -34,6 +65,10 @@ export interface StatusBubbleProps {
   avatar?: ReactNode;
   api?: Pick<AvatarAPI, "status">;
   actions?: ReactNode;
+  /** Approval preview: renders an `ActionCard` instead of the legacy `actions` row. */
+  preview?: ActionPreview;
+  onApprove?: () => void;
+  onDeny?: () => void;
   className?: string;
 }
 
@@ -48,6 +83,9 @@ export function StatusBubble({
   avatar,
   api,
   actions,
+  preview,
+  onApprove,
+  onDeny,
   className,
 }: StatusBubbleProps) {
   const [revealed, setRevealed] = useState(typing ? 0 : text.length);
@@ -95,6 +133,12 @@ export function StatusBubble({
 
   const shown = text.slice(0, revealed);
   const isTyping = revealed < text.length;
+  // An approval with a handler shows what it is approving; without one the
+  // legacy `actions` row stays (never an enabled control with no handler).
+  const approval =
+    preview && onApprove ? (
+      <ActionCard preview={preview} onApprove={onApprove} onDeny={onDeny} />
+    ) : null;
 
   return (
     <div className={["dg-status", className ?? ""].join(" ").trim()}>
@@ -104,7 +148,7 @@ export function StatusBubble({
         <span className={isTyping ? "dg-bubble__text dg-typewriter" : "dg-bubble__text"}>
           {shown}
         </span>
-        {actions ? <div className="dg-bubble__actions">{actions}</div> : null}
+        {approval ?? (actions ? <div className="dg-bubble__actions">{actions}</div> : null)}
         {onToggleCollapse ? (
           <button
             type="button"

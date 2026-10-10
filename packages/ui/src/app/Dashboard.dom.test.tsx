@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * Mounts the real dashboard in a DOM and exercises every interactive control:
- *  - all 7 tabs (sidebar and the narrow tab strip) switch screens;
+ *  - all 8 tabs (sidebar and the narrow tab strip) switch screens;
  *  - the composer is a controlled input that sends via Enter and the Send button;
  *  - the mic starts voice and attach-file is disabled with a reason;
  *  - NO enabled control is dead, and every disabled control explains why;
@@ -23,6 +23,7 @@ const MARKER: Record<NavTabId, string> = {
   integrations: "Connect your tools",
   vault: "quick access and auto-fill",
   activity: "A record of everything",
+  apikeys: "Paste your API keys here",
 };
 
 const flusher = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
@@ -109,7 +110,7 @@ describe("Dashboard (DOM)", () => {
     expect(consoleWarnings).toEqual([]);
   });
 
-  it("switches all 7 screens from the narrow tab strip", () => {
+  it("switches all 8 screens from the narrow tab strip", () => {
     act(() => root.render(<Dashboard />));
     const strip = container.querySelector(".dg-tabbar");
     expect(strip).not.toBeNull();

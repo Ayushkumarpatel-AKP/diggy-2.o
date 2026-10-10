@@ -1,5 +1,5 @@
 /**
- * @diggy/ui — DIGGY's premium pastel + gold design system and the 7-tab side-panel dashboard.
+ * @diggy/ui — DIGGY's premium pastel + gold design system and the 8-tab side-panel dashboard.
  *
  * Design source of truth: `diggy motion/Diggy Pastel Productivity Dashboard.png`.
  * Palette tokens: `@diggy/shared` -> `tokens` (re-exported here as `tokens`).
@@ -14,15 +14,18 @@
  * tokens, TONES, type Tone, tokenCssVariables(), applyTokens()
  * //  primitives
  * Panel, Card, Button, Pill, Tabs, Input, SearchField, MetricTile, ListRow, AlertRow,
- * AvatarChip, IconButton, QuickAction, StatusBubble
+ * AvatarChip, IconButton, QuickAction, StatusBubble, type ActionPreview
+ * ActionCard (w8-parts), Menu (w8-parts), NotificationPanel (w8-parts)
  * //  hooks
- * insertByPriority, truncateStatus, type StatusItem, type StatusPriority, type BubbleStyle
+ * insertByPriority, truncateStatus, LONG_STATUS_MAX,
+ * type StatusItem, type StatusPriority, type BubbleStyle
  * useHotkey, usePopOut, useStatusQueue, type StatusUpdate
+ * useNotifications, type AppNotification (w8-parts)
  * type LiveStatus, type PendingConfirmation
  * //  app
- * Dashboard (the 7-tab surface), Sidebar, ScreenHeader, CommandPalette
+ * Dashboard (the 8-tab surface), Sidebar, ScreenHeader, CommandPalette
  * HomeScreen, AssistantScreen, MonitorScreen, ActionsScreen, IntegrationsScreen,
- * VaultScreen, ActivityScreen
+ * VaultScreen, ActivityScreen, ApiKeysScreen, type ApiKeysSetup
  * //  sample data (review gallery)
  * sampleUser, sampleMetrics, sampleAlerts, sampleQuickCommands, sampleWatches,
  * sampleActionLog, sampleIntegrations, sampleProfile, sampleActivity
@@ -44,13 +47,20 @@ export * from "./primitives/AlertRow.js";
 export * from "./primitives/AvatarChip.js";
 export * from "./primitives/IconButton.js";
 export * from "./primitives/QuickAction.js";
-export * from "./primitives/StatusBubble.js";
+// Explicit rather than `export *`: `ActionCard` owns `ActionPreview`, and two
+// star-exports both providing it is an ambiguous re-export.
+export { StatusBubble } from "./primitives/StatusBubble.js";
+export type { StatusBubbleProps } from "./primitives/StatusBubble.js";
 export * from "./primitives/Composer.js";
+export * from "./primitives/ActionCard.js";
+export * from "./primitives/Menu.js";
+export * from "./primitives/NotificationPanel.js";
 
 export * from "./hooks/statusQueue.js";
 export * from "./hooks/useHotkey.js";
 export * from "./hooks/usePopOut.js";
 export * from "./hooks/useStatusQueue.js";
+export * from "./hooks/useNotifications.js";
 
 export * from "./app/format.js";
 export * from "./app/sampleData.js";
@@ -67,3 +77,5 @@ export * from "./app/screens/ActionsScreen.js";
 export * from "./app/screens/IntegrationsScreen.js";
 export * from "./app/screens/VaultScreen.js";
 export * from "./app/screens/ActivityScreen.js";
+export * from "./app/screens/ApiKeysScreen.js";
+export * from "./app/screens/screenHelpers.js";

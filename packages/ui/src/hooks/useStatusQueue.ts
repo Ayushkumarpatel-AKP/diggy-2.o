@@ -4,7 +4,7 @@
  *
  * // INTERFACE FOR INTEGRATION
  * interface StatusUpdate { text: string; priority?: StatusPriority; style?: BubbleStyle;
- *   mood?: AvatarState; id?: string }
+ *   mood?: AvatarState; id?: string; max?: number }
  * interface UseStatusQueueResult { current: StatusItem | null; pending: StatusItem[];
  *   collapsed: boolean; push(update: StatusUpdate): void; clear(): void;
  *   toggleCollapse(): void; setCollapsed(value: boolean): void }
@@ -29,6 +29,8 @@ export interface StatusUpdate {
   style?: BubbleStyle;
   mood?: AvatarState;
   id?: string;
+  /** Clip the line to this many chars instead of the 68-char bubble width. */
+  max?: number;
 }
 
 export interface UseStatusQueueResult {
@@ -64,7 +66,7 @@ export function useStatusQueue(options: UseStatusQueueOptions = {}): UseStatusQu
       seq.current += 1;
       const item: StatusItem = {
         id: update.id ?? `status_${seq.current}`,
-        text: truncateStatus(update.text),
+        text: truncateStatus(update.text, update.max ?? 68),
         priority: update.priority ?? 0,
         style: update.style ?? "thought",
         mood: update.mood,

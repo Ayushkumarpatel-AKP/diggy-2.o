@@ -58,15 +58,23 @@ describe("dashboard onCommand routing", () => {
       ),
     );
     clickButton("Add Website");
-    expect(onCommand).toHaveBeenCalledWith("Add Website", "track");
+    expect(onCommand).toHaveBeenCalledWith("Add Website", "watch.add");
     expect(onAction).not.toHaveBeenCalled();
   });
 
-  it("falls back to onAction label matching when onCommand is absent", () => {
+  it("acknowledges locally when the runtime channel is absent", () => {
     const onAction = vi.fn();
-    act(() => root.render(<Dashboard tab="monitor" onAction={onAction} />));
+    const onStatus = vi.fn();
+    act(() =>
+      root.render(
+        <Dashboard tab="monitor" onAction={onAction} statusApi={{ status: onStatus }} />,
+      ),
+    );
     clickButton("Add Website");
-    expect(onAction).toHaveBeenCalledWith("track");
+    // `watch.add` has no ActionIntent mapping, so with no runtime wired the
+    // dashboard falls back to a local status line instead of a dead click.
+    expect(onAction).not.toHaveBeenCalled();
+    expect(onStatus).toHaveBeenCalledWith("Add Website · watch.add");
   });
 
   it("keeps legacy sentinel routing when onCommand is also wired", () => {

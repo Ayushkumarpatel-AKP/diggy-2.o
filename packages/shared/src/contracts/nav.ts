@@ -1,5 +1,5 @@
 /**
- * Navigation map — the 7 tabs, in the order shown in the theme PNG.
+ * Navigation map — the 8 tabs, in the order shown in the theme PNG.
  * Owning worker: ui (`packages/ui`, sidepanel).
  */
 
@@ -11,6 +11,7 @@ export const NAV_TABS = [
   { id: "integrations", label: "Integrations", icon: "integrations" },
   { id: "vault", label: "Vault", icon: "vault" },
   { id: "activity", label: "Activity", icon: "activity" },
+  { id: "apikeys", label: "API Keys", icon: "lock" },
 ] as const;
 
 export type NavTab = (typeof NAV_TABS)[number];

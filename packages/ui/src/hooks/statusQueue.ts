@@ -9,6 +9,7 @@
  *   style: BubbleStyle; mood?: AvatarState }
  * insertByPriority(queue: StatusItem[], item: StatusItem): StatusItem[];
  * truncateStatus(text: string, max?: number): string;
+ * LONG_STATUS_MAX: number;
  * PRIORITY_DOT: Record<StatusPriority, string>;
  * // END INTERFACE FOR INTEGRATION
  */
@@ -46,3 +47,10 @@ export function truncateStatus(text: string, max = 68): string {
   const clean = text.replace(/\s+/g, " ").trim();
   return clean.length <= max ? clean : `${clean.slice(0, max - 1)}…`;
 }
+
+/**
+ * Long-form cap for `liveStatus`-style lines that describe an action (an
+ * approval needs more room than the 68-char one-line bubble). Pass as the
+ * `max` of a `StatusUpdate` / `LiveStatus`.
+ */
+export const LONG_STATUS_MAX = 200;

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { insertByPriority, truncateStatus, type StatusItem } from "./statusQueue.js";
+import {
+  LONG_STATUS_MAX,
+  insertByPriority,
+  truncateStatus,
+  type StatusItem,
+} from "./statusQueue.js";
 
 function item(id: string, priority: StatusItem["priority"]): StatusItem {
   return { id, text: id, priority, style: "thought" };
@@ -52,5 +57,16 @@ describe("truncateStatus", () => {
     const result = truncateStatus("x".repeat(100), 10);
     expect(result).toHaveLength(10);
     expect(result.endsWith("…")).toBe(true);
+  });
+
+  it("keeps the 68-char one-line default", () => {
+    expect(truncateStatus("x".repeat(100))).toHaveLength(68);
+  });
+
+  it("offers a long-form cap for action-describing lines", () => {
+    expect(LONG_STATUS_MAX).toBeGreaterThan(68);
+    const text = "x".repeat(LONG_STATUS_MAX + 50);
+    expect(truncateStatus(text, LONG_STATUS_MAX)).toHaveLength(LONG_STATUS_MAX);
+    expect(truncateStatus(text, LONG_STATUS_MAX).endsWith("…")).toBe(true);
   });
 });

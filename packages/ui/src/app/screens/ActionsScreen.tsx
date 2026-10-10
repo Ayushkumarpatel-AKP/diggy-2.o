@@ -3,7 +3,10 @@
  *
  * // INTERFACE FOR INTEGRATION
  * interface ActionsScreenProps { onCommand(label: string, intent?: string): void;
- *   state?: ScreenState; preview?: boolean }
+ *   state?: ScreenState; preview?: boolean; actions?: ActionLogRow[] }
+ * // Intents emitted: `ask` (`New Action`, per-row Retry / Run now / Repeat /
+ * // Details — the goal text names the row, because the runtime has no
+ * // dedicated action verb).
  * // END INTERFACE FOR INTEGRATION
  */
 import { useState } from "react";
@@ -11,14 +14,23 @@ import { useState } from "react";
 import { Icon } from "../../Icon.js";
 import { Button } from "../../primitives/Button.js";
 import { Panel } from "../../primitives/Card.js";
-import { IconButton } from "../../primitives/IconButton.js";
 import { ListRow } from "../../primitives/ListRow.js";
+import { Menu } from "../../primitives/Menu.js";
 import { Pill } from "../../primitives/Pill.js";
 import { Tabs } from "../../primitives/Tabs.js";
 import { formatClock } from "../format.js";
 import { ScreenHeader } from "../ScreenHeader.js";
 import { StateBlock, PreviewBadge, type ScreenState } from "../ScreenState.js";
-import { sampleActionLog, type ActionStatus } from "../sampleData.js";
+import { type ActionLogRow, type ActionStatus } from "../sampleData.js";
+import { actionMenuItems } from "./screenHelpers.js";
+
+export interface ActionsScreenProps {
+  onCommand: (label: string, intent?: string) => void;
+  state?: ScreenState;
+  preview?: boolean;
+  /** Live action log from the host; absent keeps the honest empty state. */
+  actions?: ActionLogRow[];
+}
 
 export interface ActionsScreenProps {
   onCommand: (label: string, intent?: string) => void;
@@ -49,10 +61,10 @@ export function ActionsScreen({
   onCommand,
   state = "ready",
   preview = true,
+  actions = [],
 }: ActionsScreenProps) {
   const [tab, setTab] = useState("all");
-  const rows =
-    tab === "all" ? sampleActionLog : sampleActionLog.filter((row) => row.status === tab);
+  const rows = tab === "all" ? actions : actions.filter((row) => row.status === tab);
 
   return (
     <>
@@ -63,7 +75,7 @@ export function ActionsScreen({
         subtitle="See what DIGGY has done for you."
       >
         {preview ? <PreviewBadge /> : null}
-        <Button variant="primary" icon="plus" onClick={() => onCommand("New Action")}>
+        <Button variant="primary" icon="plus" onClick={() => onCommand("New Action", "ask")}>
           New Action
         </Button>
       </ScreenHeader>
@@ -113,10 +125,14 @@ export function ActionsScreen({
                     {STATUS_LABEL[row.status]}
                   </Pill>
                   <span className="dg-row__time">{formatClock(row.at)}</span>
-                  <IconButton
-                    icon="more"
+                  <Menu
                     label={`Options for ${row.title}`}
-                    onClick={() => onCommand(`Options for ${row.title}`)}
+                    align="right"
+                    items={actionMenuItems(row.status, row.title).map((item) => ({
+                      id: item.id,
+                      label: item.label,
+                      onSelect: () => onCommand(item.text, "ask"),
+                    }))}
                   />
                 </>
               }
