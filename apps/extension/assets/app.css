@@ -9,3 +9,18 @@ body {
   background: #f7f8fa;
   color: #111827;
 }
+
+/*
+ * The result card (a thumbnail, a title, a link) floats above the pinned
+ * composer. Without a dock it rendered inline and was pushed off-screen by the
+ * panel's own scrolling.
+ */
+.dg-carddock {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 84px;
+  z-index: 40;
+  pointer-events: auto;
+}
+

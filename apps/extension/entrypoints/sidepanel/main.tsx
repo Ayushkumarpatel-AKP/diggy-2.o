@@ -14,7 +14,7 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { Dashboard, SetupPanel, type IntegrationRow, type WatchRow } from "../../../../packages/ui/src/index.js";
+import { ActionCard, Dashboard, SetupPanel, type IntegrationRow, type WatchRow } from "../../../../packages/ui/src/index.js";
 import type { BubbleStyle, StatusPriority } from "../../../../packages/ui/src/index.js";
 import { PROVIDER_PRESETS } from "../../src/provider-settings.js";
 import type { ActivityEvent, WatchSpec } from "@diggy/shared";
@@ -197,6 +197,13 @@ function SidePanel() {
   const [setupOpen, setSetupOpen] = useState(false);
   const [setup, setSetup] = useState<SetupValues | null>(null);
   const [setupStatus, setSetupStatus] = useState<string | undefined>(undefined);
+  /** The last result worth showing as a card (a link, a video, a page). */
+  const [card, setCard] = useState<{
+    title: string;
+    detail?: string;
+    targetUrl?: string;
+    thumbnailUrl?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (setupOpen) void loadSetup().then(setSetup);
@@ -238,6 +245,12 @@ function SidePanel() {
             style?: string;
             confirmation?: Confirmation | null;
             state?: AppState;
+            card?: {
+              title: string;
+              detail?: string;
+              targetUrl?: string;
+              thumbnailUrl?: string;
+            } | null;
           }
         | undefined;
       if (!message) return undefined;
@@ -264,6 +277,12 @@ function SidePanel() {
       // user where to paste a key).
       if (message.type === "diggy:setup") {
         setSetupOpen(true);
+      }
+
+      // A result worth showing: an answer that points somewhere gets a card with
+      // its host, its text and — for a video — its thumbnail.
+      if (message.type === "diggy:card") {
+        setCard(message.card ?? null);
       }
       return undefined;
     };
@@ -351,6 +370,28 @@ function SidePanel() {
           {...(setupStatus !== undefined ? { status: setupStatus } : {})}
           onClose={() => setSetupOpen(false)}
         />
+      ) : null}
+      {card ? (
+        <div className="dg-carddock">
+          <ActionCard
+            preview={{
+              id: "result-card",
+              kind: "navigate",
+              title: card.title,
+              ...(card.detail !== undefined ? { detail: card.detail } : {}),
+              ...(card.targetUrl !== undefined ? { targetUrl: card.targetUrl } : {}),
+              ...(card.thumbnailUrl !== undefined ? { thumbnailUrl: card.thumbnailUrl } : {}),
+              confirmLabel: "Open",
+              denyLabel: "Dismiss",
+            }}
+            onApprove={() => {
+              const target = card.targetUrl;
+              setCard(null);
+              if (target) send({ intent: "ask", text: `Open ${target}` });
+            }}
+            onDeny={() => setCard(null)}
+          />
+        </div>
       ) : null}
     </>
   );

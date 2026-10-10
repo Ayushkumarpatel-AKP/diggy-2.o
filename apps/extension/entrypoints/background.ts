@@ -474,6 +474,32 @@ async function runGoal(goal: string, context?: string): Promise<void> {
   await setStatus(VOICE_STATUS.speaking);
   await toTab({ action: "say", text: spoken });
   await setStatus("");
+
+  /*
+   * If the answer points somewhere specific, show it as a card rather than
+   * burying the link in a one-line bubble that is clipped at a couple of hundred
+   * characters. This is what makes a thumbnail and a clickable target appear at
+   * all — previously the card only ever rendered for an *approval*, so a normal
+   * answer had nowhere to put a link.
+   */
+  const link = /https?:\/\/[^\s)"'<>]+/i.exec(spoken)?.[0];
+  // A YouTube link carries its own thumbnail, so the card can show the video's
+  // face rather than a bare hostname.
+  const videoId = link
+    ? /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([A-Za-z0-9_-]{11})/.exec(link)?.[1]
+    : undefined;
+  broadcast({
+    type: "diggy:card",
+    card: link
+      ? {
+          title: goal,
+          detail: spoken.slice(0, 300),
+          targetUrl: link,
+          ...(videoId ? { thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` } : {}),
+        }
+      : null,
+  });
+
   // Watches/reminders/spend may have changed during the run.
   void broadcastState();
 }
