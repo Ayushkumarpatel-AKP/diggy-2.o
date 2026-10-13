@@ -23,19 +23,11 @@
 
 ---
 
-## Running in Chrome (actual build)
+<p align="center">
+  <img src="docs/diggy-vrm.png" alt="Diggy — VRM avatar" width="640" />
+</p>
 
-![Diggy side panel running in Chromium — Home dashboard with Quick Commands](docs/screenshots/actual-sidepanel.png)
-
-> Real capture: built MV3 extension (`apps/extension/.output/chrome-mv3`) loaded
-> unpacked in Chromium, `sidepanel.html` open on a fresh profile — Home dashboard
-> with nav, greeting, stats, Recent Alerts and Quick Commands.
-
-![Diggy on-page overlay bubble running in Chromium](docs/screenshots/actual-overlay.png)
-
-> Real capture: `overlay.html` — the on-page status bubble beside the avatar
-> (`Ready — press Ctrl+Space to talk`). The 3D avatar mounts on pages via the
-> content script once host access is granted at runtime.
+> **Diggy** — the VRM companion (`assets/avatar/diggy_U.vrm` + 11 `.vrma` clips, see [`ANIMATIONS.md`](ANIMATIONS.md)). She lives in your browser's corner: talks, listens, and acts on the page with you.
 
 ## What is Diggy?
 
