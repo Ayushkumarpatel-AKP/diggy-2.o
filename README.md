@@ -23,9 +23,19 @@
 
 ---
 
-![Diggy dashboard — Home, Assistant, Monitor, Actions, Integrations, Vault and Activity](docs/screenshots/dashboard.png)
+## Running in Chrome (actual build)
 
-> The full Diggy side-panel: Home overview, page-aware Assistant, website Monitor, Action history, Integrations, encrypted Vault, and a transparent Activity log.
+![Diggy side panel running in Chromium — Home dashboard with Quick Commands](docs/screenshots/actual-sidepanel.png)
+
+> Real capture: built MV3 extension (`apps/extension/.output/chrome-mv3`) loaded
+> unpacked in Chromium, `sidepanel.html` open on a fresh profile — Home dashboard
+> with nav, greeting, stats, Recent Alerts and Quick Commands.
+
+![Diggy on-page overlay bubble running in Chromium](docs/screenshots/actual-overlay.png)
+
+> Real capture: `overlay.html` — the on-page status bubble beside the avatar
+> (`Ready — press Ctrl+Space to talk`). The 3D avatar mounts on pages via the
+> content script once host access is granted at runtime.
 
 ## What is Diggy?
 
