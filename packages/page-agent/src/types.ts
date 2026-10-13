@@ -20,6 +20,7 @@
  * `action-api.ts`; the types here are the DOM-layer vocabulary.
  */
 import type { ConfirmPayload, Decision } from '@diggy/policy';
+import type { ActionTarget } from '@diggy/shared';
 
 /** A viewport-relative rectangle, in CSS pixels. */
 export interface BoundingBox {
@@ -92,6 +93,14 @@ export interface ActionResult {
   decision: Decision;
   /** Present for a `confirm` — the payload the host shows the user. */
   confirm?: ConfirmPayload;
+  /**
+   * Did the effect land? A `type`/`select` reads its value back; absent when the
+   * action has no cheap post-condition (a click is verified by the next
+   * snapshot, in the host).
+   */
+  verified?: boolean;
+  /** The element the action touched, so the host can point at it. */
+  target?: ActionTarget;
 }
 
 /** Per-call options. `approved` is set by the host after the user confirms. */

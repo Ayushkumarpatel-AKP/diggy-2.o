@@ -14,12 +14,54 @@ export interface PolicyVerdict {
   site?: string;
 }
 
+/** The element an action touched — enough to draw a pointer over it. */
+export interface ActionTarget {
+  ref: number;
+  name: string;
+  role: string;
+  /** Viewport-relative box (all zeros under jsdom, which has no layout). */
+  bbox: { x: number; y: number; width: number; height: number };
+  inViewport: boolean;
+}
+
 export interface ActionResult<T = unknown> {
   ok: boolean;
   /** Human-readable extracted content (browser-use ActionResult style). */
   extractedContent?: string;
   data?: T;
   error?: string;
+  /**
+   * Did the engine confirm the effect (a field value read back, a ref still
+   * resolvable)? Absent when the action has no cheap post-condition.
+   */
+  verified?: boolean;
+  /** The element the action touched, for the visible pointer overlay. */
+  target?: ActionTarget;
+}
+
+/** A structured browser action that the model can select via tool calls. */
+export interface BrowserAction {
+  taskId: string;
+  tabId: number;
+  action:
+    | "inspect"
+    | "click"
+    | "type"
+    | "press_key"
+    | "scroll"
+    | "navigate"
+    | "select"
+    | "wait"
+    | "verify";
+  target?: {
+    role?: string;
+    accessibleName?: string;
+    label?: string;
+    text?: string;
+    selector?: string;
+  };
+  value?: string;
+  reason?: string;
 }
 
 export interface PlannedStep {

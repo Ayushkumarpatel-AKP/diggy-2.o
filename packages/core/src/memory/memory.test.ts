@@ -25,6 +25,15 @@ describe("capToolResult", () => {
     expect(capToolResult("anything", 0)).toBe("");
   });
 
+  it("keeps the head and the tail so a trailing result survives", () => {
+    const text = `HEAD${"x".repeat(5_000)}TAIL-END`;
+    const capped = capToolResult(text, 400);
+    expect(capped.length).toBeLessThanOrEqual(400);
+    expect(capped.startsWith("HEAD")).toBe(true);
+    expect(capped.endsWith("TAIL-END")).toBe(true);
+    expect(capped).toContain("truncated");
+  });
+
   it("caps only tool messages", () => {
     const messages: ChatMessage[] = [
       { role: "user", content: "u".repeat(100) },

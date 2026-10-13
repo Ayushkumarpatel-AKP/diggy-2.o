@@ -6,11 +6,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { resetTaint } from '@diggy/policy';
 import {
   ACTION_MESSAGE_TYPE,
+  AGENT_ACTION_TOOLS,
   createActionAPI,
   createToolHost,
   createToolListener,
   findSubmitControl,
   performUserSubmit,
+  registryToAgentTools,
   SUBMIT_MESSAGE_TYPE,
   type ToolResponse,
 } from '../src/index.js';
@@ -106,17 +108,43 @@ describe('performUserSubmit', () => {
   });
 });
 
-describe('the agent loop has no route to submit', () => {
+describe('the agent loop has no direct route to submit', () => {
   beforeEach(() => {
     resetTaint();
     document.body.innerHTML = '';
   });
 
-  it('exposes no submit tool in the registry', () => {
-    const names = createActionAPI().tools.names();
-    expect(names).not.toContain('submit');
+  it('registers submit, but only as an irreversible, approval-gated verb', () => {
+    const engine = createActionAPI();
+    const names = engine.tools.names();
+    expect(names).toContain('submit');
+    expect(engine.tools.get('submit')?.category).toBe('irreversible');
     expect(names).not.toContain('performUserSubmit');
     expect(names).not.toContain('findSubmitControl');
+  });
+
+  it('keeps submit out of the model catalogue', () => {
+    const engine = createActionAPI();
+    const tools = registryToAgentTools(
+      engine.tools.list(),
+      async () => ({ ok: true }),
+      AGENT_ACTION_TOOLS,
+    );
+    expect(tools.map((tool) => tool.schema.name)).not.toContain('submit');
+  });
+
+  it('does not press without approval, and presses once approved', async () => {
+    document.body.innerHTML = `<form><input name="a"><button type="submit">Apply now</button></form>`;
+    const submits = countSubmits();
+    const engine = createActionAPI();
+
+    const refused = await engine.tools.invoke('submit', {});
+    expect(refused.ok).toBe(false);
+    expect(submits()).toBe(0);
+
+    const approved = await engine.tools.invoke('submit', {}, { approved: true });
+    expect(approved.ok).toBe(true);
+    expect(submits()).toBe(1);
   });
 
   it('answers a submit request only on the dedicated user-gesture message', async () => {

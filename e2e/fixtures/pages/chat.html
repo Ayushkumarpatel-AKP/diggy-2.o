@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>DIGGY Chat Fixture</title>
+  </head>
+  <body>
+    <!--
+      A mock messaging UI — the stand-in for "open Instagram, message Priyanka".
+      It has the pieces a real DM flow needs: a search box, a conversation list,
+      a composer, a Send control, and a visible "Sent ✓" marker, plus a plain
+      button that records pointer phases so a test can prove the engine sends a
+      real gesture and not just a bare `click()`.
+    -->
+    <main>
+      <h1>Messages</h1>
+
+      <label for="search">Search people</label>
+      <input id="search" type="search" placeholder="Search" />
+
+      <ul id="people" aria-label="Conversations">
+        <li><a id="open-priyanka" href="#priyanka" role="button">Priyanka</a></li>
+        <li><a id="open-rahul" href="#rahul" role="button">Rahul</a></li>
+      </ul>
+
+      <section id="thread" aria-label="Conversation with Priyanka">
+        <h2 id="thread-title">Priyanka</h2>
+        <div id="messages" aria-live="polite"></div>
+
+        <label for="composer">Message</label>
+        <textarea id="composer" placeholder="Write a message"></textarea>
+
+        <button id="send" type="button" aria-label="Send message">Send</button>
+      </section>
+
+      <p id="status" data-sent="false">Not sent</p>
+      <button id="probe" type="button">Probe</button>
+    </main>
+
+    <script>
+      const composer = document.getElementById("composer");
+      const send = document.getElementById("send");
+      const status = document.getElementById("status");
+      const messages = document.getElementById("messages");
+
+      window.__sent = [];
+      send.addEventListener("click", () => {
+        const text = composer.value.trim();
+        if (!text) return;
+        window.__sent.push(text);
+        const line = document.createElement("div");
+        line.textContent = `You: ${text}`;
+        messages.appendChild(line);
+        status.textContent = "Sent ✓";
+        status.setAttribute("data-sent", "true");
+        composer.value = "";
+      });
+
+      // Pointer phases on a plain button — proof the engine dispatches a real
+      // gesture sequence, not just element.click().
+      window.__pointerPhases = [];
+      const probe = document.getElementById("probe");
+      for (const type of [
+        "pointerover",
+        "mouseover",
+        "pointerdown",
+        "mousedown",
+        "pointerup",
+        "mouseup",
+        "click",
+      ]) {
+        probe.addEventListener(type, () => window.__pointerPhases.push(type));
+      }
+    </script>
+  </body>
+</html>

@@ -3,6 +3,7 @@ export * from "./contracts/provider.js";
 export * from "./contracts/avatar.js";
 export * from "./contracts/monitor.js";
 export * from "./contracts/action.js";
+export * from "./contracts/task.js";
 export * from "./contracts/vault.js";
 export * from "./contracts/bus.js";
 export * from "./contracts/activity.js";

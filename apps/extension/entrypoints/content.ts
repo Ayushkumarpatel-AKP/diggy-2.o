@@ -17,6 +17,13 @@ import { Avatar } from "@diggy/avatar";
 import type { AvatarHandle, AvatarCard, AvatarProps } from "@diggy/avatar";
 import { createToolHost } from "@diggy/page-agent";
 import type { AvatarState } from "@diggy/shared";
+import {
+  POINTER_HIDE_MS,
+  initialPointerState,
+  reducePointer,
+  type PointerMessage,
+  type PointerState,
+} from "../src/pointer.js";
 
 /** Messages the background sends to drive the on-page avatar. */
 interface AvatarMessage {
@@ -147,6 +154,85 @@ export default defineContentScript({
     mount.style.cssText = "position:fixed;inset:0;pointer-events:none;";
     shadow.appendChild(mount);
     parent.appendChild(host);
+
+    /* --- the visible pointer --------------------------------------------- */
+
+    /*
+     * A purely visual cursor that tracks real actions. It is driven only by
+     * `diggy:pointer` messages, which the background sends from actual tool
+     * results — so it can never show a click that did not happen. It draws inside
+     * the same click-through Shadow DOM as the avatar, so it never intercepts the
+     * user's own input.
+     */
+    const pointerLayer = document.createElement("div");
+    pointerLayer.setAttribute("data-diggy-pointer", "");
+    pointerLayer.style.cssText = "position:fixed;inset:0;pointer-events:none;overflow:hidden;";
+
+    const ring = document.createElement("div");
+    ring.style.cssText =
+      "position:absolute;left:0;top:0;border:2px solid #e0a63a;border-radius:6px;" +
+      "box-shadow:0 0 0 3px rgba(224,166,58,.22);opacity:0;" +
+      "transition:opacity .12s ease,transform .18s ease,width .12s ease,height .12s ease;";
+    const dot = document.createElement("div");
+    dot.style.cssText =
+      "position:absolute;left:0;top:0;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;" +
+      "background:rgba(224,166,58,.95);border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);" +
+      "opacity:0;transition:left .22s ease,top .22s ease,opacity .12s ease;";
+    const pointerLabel = document.createElement("div");
+    pointerLabel.style.cssText =
+      "position:absolute;left:0;top:0;max-width:260px;padding:2px 8px;border-radius:999px;" +
+      "background:rgba(28,28,30,.88);color:#fff;font:12px/1.5 system-ui,sans-serif;" +
+      "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0;" +
+      "transition:opacity .12s ease,left .22s ease,top .22s ease;";
+    pointerLayer.append(ring, dot, pointerLabel);
+    shadow.appendChild(pointerLayer);
+
+    let pointerState: PointerState = initialPointerState();
+    let pointerTimer: number | null = null;
+    const reducedMotion =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    function renderPointer(): void {
+      const state = pointerState;
+      if (!state.visible) {
+        ring.style.opacity = "0";
+        dot.style.opacity = "0";
+        pointerLabel.style.opacity = "0";
+        return;
+      }
+      if (state.bbox) {
+        const cx = state.bbox.x + state.bbox.width / 2;
+        const cy = state.bbox.y + state.bbox.height / 2;
+        dot.style.left = `${cx}px`;
+        dot.style.top = `${cy}px`;
+        ring.style.transform = `translate(${state.bbox.x}px, ${state.bbox.y}px)`;
+        ring.style.width = `${state.bbox.width}px`;
+        ring.style.height = `${state.bbox.height}px`;
+        pointerLabel.style.left = `${state.bbox.x}px`;
+        pointerLabel.style.top = `${Math.max(0, state.bbox.y - 24)}px`;
+      }
+      ring.style.opacity = state.action === "click" || state.action === "type" ? "1" : "0";
+      dot.style.opacity = "1";
+      pointerLabel.textContent = state.label;
+      pointerLabel.style.opacity = state.label ? "1" : "0";
+
+      if (!reducedMotion && state.action === "click" && typeof dot.animate === "function") {
+        dot.animate(
+          [{ transform: "scale(1)" }, { transform: "scale(2.4)", opacity: 0.2 }, { transform: "scale(1)", opacity: 1 }],
+          { duration: 420, easing: "ease-out" },
+        );
+      }
+    }
+
+    function schedulePointerHide(): void {
+      if (pointerTimer !== null) window.clearTimeout(pointerTimer);
+      pointerTimer = window.setTimeout(() => {
+        pointerState = reducePointer(pointerState, { action: "idle" });
+        renderPointer();
+      }, POINTER_HIDE_MS);
+    }
+
 
     // `browser.runtime.getURL` is typed against WXT's generated `PublicPath`
     // union, which lists files rather than the `assets/avatar` directory.
@@ -298,6 +384,14 @@ export default defineContentScript({
         return Promise.resolve({ text, url: location.href, title: document.title });
       }
 
+      // A real action landed: show the user where, as a purely visual pointer.
+      if (message?.type === "diggy:pointer") {
+        pointerState = reducePointer(pointerState, raw as PointerMessage);
+        renderPointer();
+        schedulePointerHide();
+        return undefined;
+      }
+
       if (message?.type === "diggy:dictate") {
         if (typeof message.lang === "string" && message.lang) language = message.lang;
         if (message.action === "start") startDictation();
@@ -360,6 +454,7 @@ export default defineContentScript({
     ctx.onInvalidated(() => {
       browser.runtime.onMessage.removeListener(onMessage);
       document.removeEventListener("visibilitychange", onVisibility);
+      if (pointerTimer !== null) window.clearTimeout(pointerTimer);
       stopDictation();
       handleRef.current?.play("exit");
       unmountAvatar();

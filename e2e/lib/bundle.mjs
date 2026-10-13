@@ -35,6 +35,11 @@ export const PRODUCT_API = [
   'planIsSubmitFree',
   'isSubmitStep',
   'ToolRegistry',
+  'createActionAPI',
+  'createPageAgent',
+  'findSubmitControl',
+  'performUserSubmit',
+  'isSubmitControl',
   'evaluateWatch',
   'createWatchState',
 ];
@@ -42,9 +47,9 @@ export const PRODUCT_API = [
 const ENTRY = `
 import { detectFields, matchFields, buildPreview, fillForm, dryRun, isSubmitSurface } from '@diggy/forms';
 import { decide, detectInjection, wrapUntrusted, sensitiveSiteCategory } from '@diggy/policy';
-import { buildPlan, runPlan, planIsSubmitFree, isSubmitStep, ToolRegistry } from '@diggy/page-agent';
+import { buildPlan, runPlan, planIsSubmitFree, isSubmitStep, ToolRegistry, createActionAPI, createPageAgent, findSubmitControl, performUserSubmit, isSubmitControl } from '@diggy/page-agent';
 import { evaluateWatch, createWatchState } from '@diggy/monitor';
-export { detectFields, matchFields, buildPreview, fillForm, dryRun, isSubmitSurface, decide, detectInjection, wrapUntrusted, sensitiveSiteCategory, buildPlan, runPlan, planIsSubmitFree, isSubmitStep, ToolRegistry, evaluateWatch, createWatchState };
+export { detectFields, matchFields, buildPreview, fillForm, dryRun, isSubmitSurface, decide, detectInjection, wrapUntrusted, sensitiveSiteCategory, buildPlan, runPlan, planIsSubmitFree, isSubmitStep, ToolRegistry, createActionAPI, createPageAgent, findSubmitControl, performUserSubmit, isSubmitControl, evaluateWatch, createWatchState };
 `;
 
 let esbuildPromise;

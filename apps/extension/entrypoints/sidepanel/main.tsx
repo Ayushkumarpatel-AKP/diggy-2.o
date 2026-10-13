@@ -14,10 +14,11 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { ActionCard, Dashboard, SetupPanel, type IntegrationRow, type WatchRow } from "../../../../packages/ui/src/index.js";
+import { Dashboard, SetupPanel, runStateLabel, runStateTone, stepSummary, type IntegrationRow, type WatchRow } from "../../../../packages/ui/src/index.js";
 import type { BubbleStyle, StatusPriority } from "../../../../packages/ui/src/index.js";
 import { PROVIDER_PRESETS } from "../../src/provider-settings.js";
-import type { ActivityEvent, WatchSpec } from "@diggy/shared";
+import type { ActivityEvent, RunView, WatchSpec } from "@diggy/shared";
+import type { ChatTurn } from "../../src/chat-history.js";
 import "../../../../packages/ui/src/styles.css";
 import "../../assets/app.css";
 
@@ -94,14 +95,6 @@ interface LiveStatus {
   style?: BubbleStyle;
 }
 
-interface Confirmation {
-  id: string;
-  title: string;
-  detail?: string;
-  confirmLabel?: string;
-  denyLabel?: string;
-}
-
 /** The one snapshot the background broadcasts — see `broadcastState`. */
 interface AppState {
   vault?: { exists: boolean; unlocked: boolean };
@@ -110,6 +103,8 @@ interface AppState {
   watches?: { id: string; url: string; kind: string; intervalSec: number }[];
   reminders?: { id: string; title: string; dueAt: number; done: boolean }[];
   usage?: string;
+  /** The user's open tabs, as the agent sees them. */
+  tabs?: { id: number; url: string; title: string; active: boolean }[];
   events?: ActivityEvent[];
   integrations?: { id: string; name: string; category: string; status: string }[];
 }
@@ -192,20 +187,16 @@ function toWatchRow(spec: { id: string; url: string; kind: string; intervalSec: 
 
 function SidePanel() {
   const [liveStatus, setLiveStatus] = useState<LiveStatus | null>(null);
-  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [state, setState] = useState<AppState>({});
+  /** The live run's task state + steps, so the panel shows real progress. */
+  const [run, setRun] = useState<RunView | null>(null);
+  /** The conversation so far. */
+  const [turns, setTurns] = useState<ChatTurn[]>([]);
 
   // The in-panel setup form. Keys are edited here, never on the options page.
   const [setupOpen, setSetupOpen] = useState(false);
   const [setup, setSetup] = useState<SetupValues | null>(null);
   const [setupStatus, setSetupStatus] = useState<string | undefined>(undefined);
-  /** The last result worth showing as a card (a link, a video, a page). */
-  const [card, setCard] = useState<{
-    title: string;
-    detail?: string;
-    targetUrl?: string;
-    thumbnailUrl?: string;
-  } | null>(null);
 
   // Loaded on mount, not only when the overlay opens: the API Keys *screen* reads
   // the same state, and without it that tab rendered its empty state forever.
@@ -251,15 +242,10 @@ function SidePanel() {
             text?: string;
             priority?: number;
             style?: string;
-            confirmation?: Confirmation | null;
             state?: AppState;
             vaultProfile?: Record<string, unknown>;
-            card?: {
-              title: string;
-              detail?: string;
-              targetUrl?: string;
-              thumbnailUrl?: string;
-            } | null;
+            run?: RunView | null;
+            turns?: ChatTurn[];
           }
         | undefined;
       if (!message) return undefined;
@@ -273,8 +259,14 @@ function SidePanel() {
         setLiveStatus(next);
       }
 
-      if (message.type === "diggy:confirmation") {
-        setConfirmation(message.confirmation ?? null);
+      // The live task state and its steps.
+      if (message.type === "diggy:run") {
+        setRun(message.run ?? null);
+      }
+
+      // The conversation, so the panel renders a real chat.
+      if (message.type === "diggy:chat") {
+        setTurns(message.turns ?? []);
       }
 
       // The shared snapshot: vault state, watches, reminders, spend.
@@ -287,18 +279,13 @@ function SidePanel() {
       if (message.type === "diggy:setup") {
         setSetupOpen(true);
       }
-
-      // A result worth showing: an answer that points somewhere gets a card with
-      // its host, its text and — for a video — its thumbnail.
-      if (message.type === "diggy:card") {
-        setCard(message.card ?? null);
-      }
       return undefined;
     };
 
     browser.runtime.onMessage.addListener(onMessage);
     // Ask for a snapshot on open — the panel may have opened after a change.
     send({ intent: "state" });
+    send({ intent: "chat" });
     return () => browser.runtime.onMessage.removeListener(onMessage);
   }, []);
 
@@ -364,28 +351,92 @@ function SidePanel() {
           send({ intent: "vault.create", text: passphrase });
         },
       }}
-      {...(confirmation
-        ? {
-            pendingConfirmation: {
-              id: confirmation.id,
-              title: confirmation.title,
-              ...(confirmation.detail !== undefined ? { detail: confirmation.detail } : {}),
-              ...(confirmation.confirmLabel !== undefined
-                ? { confirmLabel: confirmation.confirmLabel }
-                : {}),
-              ...(confirmation.denyLabel !== undefined ? { denyLabel: confirmation.denyLabel } : {}),
-              onConfirm: () => {
-                send({ intent: "confirm", confirmationId: confirmation.id });
-                setConfirmation(null);
-              },
-              onDeny: () => {
-                send({ intent: "deny", confirmationId: confirmation.id });
-                setConfirmation(null);
-              },
-            },
-          }
-        : {})}
       />
+      {run ? (
+        <div
+          style={{
+            position: "fixed",
+            left: 12,
+            right: 12,
+            bottom: 12,
+            background: "rgba(28,28,30,.96)",
+            color: "#fff",
+            borderRadius: 12,
+            padding: "10px 12px",
+            font: "12px/1.5 system-ui,sans-serif",
+            boxShadow: "0 8px 24px rgba(0,0,0,.35)",
+            maxHeight: "42vh",
+            overflow: "auto",
+            zIndex: 20,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <span
+              style={{
+                display: "inline-block",
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background:
+                  runStateTone(run.state) === "success"
+                    ? "#3fb950"
+                    : runStateTone(run.state) === "danger"
+                      ? "#f85149"
+                      : runStateTone(run.state) === "warning"
+                        ? "#d29922"
+                        : runStateTone(run.state) === "muted"
+                          ? "#8b949e"
+                          : "#e0a63a",
+              }}
+            />
+            <span style={{ fontWeight: 600 }}>{runStateLabel(run.state)}</span>
+            <span style={{ opacity: 0.7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {run.goal}
+            </span>
+          </div>
+          {run.plan && run.plan.length > 0 ? (
+            <ol style={{ margin: "4px 0 8px 18px", opacity: 0.75 }}>
+              {run.plan.map((step, index) => (
+                <li key={index}>{step}</li>
+              ))}
+            </ol>
+          ) : null}
+          {run.steps.length > 0 ? (
+            <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+              {run.steps.map((step) => (
+                <li key={step.index} style={{ opacity: step.ok === false ? 0.6 : 1 }}>
+                  {stepSummary(step)}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {run.text ? <p style={{ margin: "6px 0 0", opacity: 0.9 }}>{run.text}</p> : null}
+        </div>
+      ) : turns.length > 0 ? (
+        <div
+          style={{
+            position: "fixed",
+            left: 12,
+            right: 12,
+            bottom: 12,
+            background: "rgba(28,28,30,.94)",
+            color: "#fff",
+            borderRadius: 12,
+            padding: "10px 12px",
+            font: "12px/1.5 system-ui,sans-serif",
+            boxShadow: "0 8px 24px rgba(0,0,0,.35)",
+            maxHeight: "36vh",
+            overflow: "auto",
+            zIndex: 20,
+          }}
+        >
+          {turns.slice(-6).map((turn, index) => (
+            <div key={index} style={{ margin: "2px 0", opacity: turn.role === "assistant" ? 0.85 : 1 }}>
+              <b>{turn.role === "user" ? "You" : "DIGGY"}:</b> {turn.content}
+            </div>
+          ))}
+        </div>
+      ) : null}
       {setupOpen && setup ? (
         <SetupPanel
           primary={setup.primary}
@@ -404,26 +455,31 @@ function SidePanel() {
           onClose={() => setSetupOpen(false)}
         />
       ) : null}
-      {card ? (
-        <div className="dg-carddock">
-          <ActionCard
-            preview={{
-              id: "result-card",
-              kind: "navigate",
-              title: card.title,
-              ...(card.detail !== undefined ? { detail: card.detail } : {}),
-              ...(card.targetUrl !== undefined ? { targetUrl: card.targetUrl } : {}),
-              ...(card.thumbnailUrl !== undefined ? { thumbnailUrl: card.thumbnailUrl } : {}),
-              confirmLabel: "Open",
-              denyLabel: "Dismiss",
-            }}
-            onApprove={() => {
-              const target = card.targetUrl;
-              setCard(null);
-              if (target) send({ intent: "ask", text: `Open ${target}` });
-            }}
-            onDeny={() => setCard(null)}
-          />
+      {!(run || turns.length > 0) && !setupOpen ? (
+        <div
+          style={{
+            position: "fixed",
+            left: 12,
+            right: 12,
+            bottom: 12,
+            background: "rgba(28,28,30,.96)",
+            color: "#fff",
+            borderRadius: 12,
+            padding: "10px 12px",
+            font: "12px/1.5 system-ui,sans-serif",
+            boxShadow: "0 8px 24px rgba(0,0,0,.35)",
+            textAlign: "center",
+            zIndex: 20,
+            cursor: "pointer",
+            maxHeight: "4vh",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onClick={() => setSetupOpen(true)}
+        >
+          <span style={{ fontSize: 24, marginRight: 8 }}>🤖</span>
+          <span>DIGGY</span>
         </div>
       ) : null}
     </>

@@ -241,6 +241,12 @@ export async function runBrain(options: RunBrainOptions): Promise<RunBrainResult
     }
   }
 
+  // Consecutive tool failures with no success between them. Either counter
+  // hitting its limit ends the run instead of burning the step budget.
+  let sameFailureCount = 0;
+  let lastFailureSignature: string | null = null;
+  let consecutiveFailures = 0;
+
   // ── act / observe loop ────────────────────────────────────────────────────
   for (;;) {
     if (options.signal?.aborted) {
@@ -270,6 +276,7 @@ export async function runBrain(options: RunBrainOptions): Promise<RunBrainResult
         tools: toolSchemas,
         temperature,
         maxTokens: options.maxTokens,
+        signal: options.signal,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error ?? "model error");
@@ -311,11 +318,49 @@ export async function runBrain(options: RunBrainOptions): Promise<RunBrainResult
       };
       steps.push(agentStep);
       safeOnStep(options.onStep, agentStep);
+
+      // ── no-progress stops: a run that only fails is a stuck run ──────────
+      const stepFailed = observations.length > 0 && observations.every((o) => !o.ok);
+      if (stepFailed) {
+        const signature = result.toolCalls
+          .map((call) => `${call.name}:${stringify(call.arguments)}`)
+          .join("|");
+        sameFailureCount = signature === lastFailureSignature ? sameFailureCount + 1 : 1;
+        lastFailureSignature = signature;
+        consecutiveFailures += 1;
+        if (sameFailureCount >= BRAIN.repeatFailureLimit) {
+          return finish(
+            "error",
+            lastText(steps),
+            `Stopped: the same failure repeated (${signature}) with no progress. ` +
+              `The target may be missing or the page may have changed — inspect the page again before retrying.`,
+          );
+        }
+        if (consecutiveFailures >= BRAIN.consecutiveFailureLimit) {
+          return finish(
+            "error",
+            lastText(steps),
+            `Stopped: the last ${consecutiveFailures} actions kept failing with no progress. ` +
+              `Inspect the page again and try a different approach instead of repeating.`,
+          );
+        }
+      } else {
+        sameFailureCount = 0;
+        lastFailureSignature = null;
+        consecutiveFailures = 0;
+      }
+
       stepIndex += 1;
       continue;
     }
 
     // No tool calls → the model gave its final answer.
+    if (!result.text.trim() && isTruncated(result.finishReason)) {
+      const failed: AgentStep = { index: step, text: "", toolCalls: [], finishReason: "error", observations: [] };
+      steps.push(failed);
+      safeOnStep(options.onStep, failed);
+      return finish("error", "", "The model was cut off before answering — no usable reply arrived.");
+    }
     if (result.text) messages.push({ role: "assistant", content: result.text });
     const finalStep: AgentStep = {
       index: step,
@@ -340,6 +385,16 @@ async function runTool(
   if (!tool) return { toolCall: call, ok: false, error: `Unknown tool "${call.name}"` };
   try {
     const result = await tool.run(call.arguments, { stepIndex, signal });
+    // Honor a tool's own failure report: a thrown error is not the only way a
+    // call fails. Without this, `{ok:false}` results read as successes and the
+    // no-progress guards below can never fire.
+    if (isRecord(result) && result["ok"] === false) {
+      const failure: Observation = { toolCall: call, ok: false, result };
+      const message = result["error"];
+      if (typeof message === "string" && message !== "") failure.error = message;
+      else failure.error = "tool failed";
+      return failure;
+    }
     return { toolCall: call, ok: true, result };
   } catch (error) {
     return { toolCall: call, ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -364,6 +419,15 @@ function safeOnToolCall(
   } catch {
     // An observer must never break the run.
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Did the model stop because its output was truncated (no usable reply)? */
+function isTruncated(finishReason: string | undefined): boolean {
+  return (finishReason ?? "").trim().toLowerCase() === "length";
 }
 
 function lastText(steps: AgentStep[]): string {

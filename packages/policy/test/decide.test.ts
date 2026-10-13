@@ -56,6 +56,17 @@ describe('decide', () => {
     expect(decision(act)).toBe('deny');
   });
 
+  it('confirm — a model-proposed send is irreversible and needs approval', () => {
+    const result = decide('send', { url: 'https://www.instagram.com/direct/t/1' });
+    expect(result.decision).toBe('confirm');
+    expect(result.category).toBe('irreversible');
+  });
+
+  it('deny — a send on a sensitive site is refused outright', () => {
+    const result = decide('send', { url: 'https://www.paypal.com/checkout' });
+    expect(decision(result)).toBe('deny');
+  });
+
   it('respects the per-site allow list (a sensitive host the user approved is allowed)', () => {
     const ctx = { siteAllowlist: ['chase.com'] };
     expect(decide('readPage', { url: 'https://www.chase.com/accounts' }, ctx).decision).toBe('allow');

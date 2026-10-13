@@ -18,15 +18,23 @@
  *  - a redacted value is never echoed back in a `summary`.
  */
 import type { PolicyContext } from '@diggy/policy';
+import type { ActionTarget } from '@diggy/shared';
 import { isSubmitControl, isSubmitKey } from './controls.js';
 import {
   accessibleName,
+  bboxOf,
   deriveRole,
   descriptiveText,
   dispatch,
   dispatchKey,
+  dispatchPoint,
+  isDisabled,
+  isHidden,
   isHtmlElement,
+  isInViewport,
+  isInputElement,
   isSelectElement,
+  isTextareaElement,
   isTextEntry,
   setFieldValue,
 } from './dom.js';
@@ -127,6 +135,97 @@ function staleRefResult(ref: number, reason: StaleReason): ActionResult {
     `Ref ${ref} is stale — it ${phrase}.`,
     `Ref ${ref} is stale (it ${phrase}); the page changed. Take a new snapshot() and use the fresh ref before acting.`,
   );
+}
+
+/** The element handle an action carried, for the host's pointer overlay. */
+function targetFor(ref: number, element: HTMLElement): ActionTarget {
+  return {
+    ref,
+    name: accessibleName(element) || descriptiveText(element) || deriveRole(element),
+    role: deriveRole(element),
+    bbox: bboxOf(element),
+    inViewport: isInViewport(element),
+  };
+}
+
+/**
+ * Bring an element into a state where a synthetic gesture is believable: scroll
+ * it into view, then confirm it is still there, visible and enabled. A re-render
+ * between the snapshot and the action shows up here as a clear failure instead of
+ * a click that silently lands on nothing.
+ */
+function makeActionable(ref: number, registry: RefRegistry): ActionResult | { element: HTMLElement } {
+  const before = registry.resolve(ref);
+  if (!before.ok) return staleRefResult(ref, before.reason);
+
+  try {
+    before.element.scrollIntoView({ block: 'center', inline: 'center' });
+  } catch {
+    // jsdom has no layout; a page without scrollIntoView is fine.
+  }
+
+  // The scroll (or an unrelated re-render) can detach or replace the element.
+  const after = registry.resolve(ref);
+  if (!after.ok) return staleRefResult(ref, after.reason);
+  if (isHidden(after.element)) {
+    return fail(
+      `Ref ${ref} is not visible.`,
+      `Ref ${ref} is present but hidden. Take a new snapshot() and choose a visible element.`,
+    );
+  }
+  if (isDisabled(after.element)) {
+    return fail(
+      `Ref ${ref} is disabled.`,
+      `Ref ${ref} is disabled and cannot be activated. Find the control that enables it, or choose another.`,
+    );
+  }
+  return { element: after.element };
+}
+
+/**
+ * Dispatch the full pointer/mouse/focus/click sequence a real user produces.
+ *
+ * A bare `element.click()` only fires a `click`; menus, hover cards and
+ * pointer-driven widgets listen on `pointerdown`/`mousedown`/`mouseenter` and
+ * never open. Coordinates come from the element's own box.
+ */
+function dispatchClickSequence(element: HTMLElement): void {
+  const box = bboxOf(element);
+  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  for (const type of [
+    'pointerover',
+    'pointerenter',
+    'mouseover',
+    'mouseenter',
+    'pointermove',
+    'mousemove',
+    'pointerdown',
+    'mousedown',
+  ]) {
+    dispatchPoint(element, type, point);
+  }
+  try {
+    element.focus({ preventScroll: true });
+  } catch {
+    try {
+      element.focus();
+    } catch {
+      // not focusable — fine
+    }
+  }
+  for (const type of ['pointerup', 'mouseup']) dispatchPoint(element, type, point);
+  try {
+    element.click();
+  } catch {
+    dispatchPoint(element, 'click', point);
+  }
+}
+
+/** Read the value a field holds now, for the post-type verification. */
+function readBackValue(element: HTMLElement): string {
+  if (isInputElement(element) || isTextareaElement(element)) return element.value;
+  if (element.isContentEditable) return element.textContent ?? '';
+  return '';
 }
 
 interface WaitSpec {
@@ -243,10 +342,15 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
     });
     if (!outcome.allowed) return outcome.blocked;
 
-    if (typeof element.click === 'function') element.click();
-    else dispatch(element, 'click');
+    const actionable = makeActionable(ref, registry);
+    if (!('element' in actionable)) return actionable;
+    const target = actionable.element;
 
-    return ok(`Clicked "${name}" (${deriveRole(element)}, ref ${ref}).`);
+    dispatchClickSequence(target);
+
+    const result = ok(`Clicked "${name}" (${deriveRole(target)}, ref ${ref}).`);
+    result.target = targetFor(ref, target);
+    return result;
   }
 
   async function type(ref: number, text: string, opts: ActionOptions = {}): Promise<ActionResult> {
@@ -271,10 +375,42 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
     });
     if (!outcome.allowed) return outcome.blocked;
 
-    setFieldValue(element, text);
-    return ok(
-      `Typed ${text.length} character${text.length === 1 ? '' : 's'} into "${name}" (${deriveRole(element)}, ref ${ref}).`,
+    const actionable = makeActionable(ref, registry);
+    if (!('element' in actionable)) return actionable;
+    const target = actionable.element;
+
+    try {
+      target.focus({ preventScroll: true });
+    } catch {
+      try {
+        target.focus();
+      } catch {
+        // not focusable — the value setter still works
+      }
+    }
+
+    setFieldValue(target, text);
+
+    // Read it back: a field that rejected the text (read-only, framework
+    // controlled, masked) is reported honestly instead of as a silent success.
+    const actual = readBackValue(target);
+    const verified = actual === text;
+    if (!verified && actual === '' && text !== '') {
+      const refused = fail(
+        `Could not type into "${name}".`,
+        `Ref ${ref} ("${name}") is still empty after typing — it may be read-only or framework-controlled. Click it first, or choose another field.`,
+      );
+      refused.target = targetFor(ref, target);
+      return refused;
+    }
+
+    const result = ok(
+      `Typed ${text.length} character${text.length === 1 ? '' : 's'} into "${name}" (${deriveRole(target)}, ref ${ref}).`,
     );
+    result.target = targetFor(ref, target);
+    result.verified = verified;
+    if (!verified) result.summary = `${result.summary} (could not confirm the field kept the value)`;
+    return result;
   }
 
   async function select(ref: number, value: string, opts: ActionOptions = {}): Promise<ActionResult> {
@@ -316,7 +452,11 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
     element.value = option.value;
     dispatch(element, 'input');
     dispatch(element, 'change');
-    return ok(`Selected "${optionLabel}" in "${name}" (combobox, ref ${ref}).`);
+
+    const result = ok(`Selected "${optionLabel}" in "${name}" (combobox, ref ${ref}).`);
+    result.target = targetFor(ref, element);
+    result.verified = element.value === option.value;
+    return result;
   }
 
   async function pressKey(key: string, opts: ActionOptions = {}): Promise<ActionResult> {

@@ -551,14 +551,16 @@ export function Dashboard({
                 })}
           />
         ) : null}
-        <StatusBubble
-          text={status.current?.text ?? "Ready — press Ctrl+Space to talk, or ask me anything."}
-          priority={status.current?.priority ?? 0}
-          variant={status.current?.style ?? "thought"}
-          collapsed={status.collapsed}
-          onToggleCollapse={status.toggleCollapse}
-          api={statusApi}
-        />
+        {status.current?.text ? (
+          <StatusBubble
+            text={status.current.text}
+            priority={status.current?.priority ?? 0}
+            variant={status.current?.style ?? "thought"}
+            collapsed={status.collapsed}
+            onToggleCollapse={status.toggleCollapse}
+            api={statusApi}
+          />
+        ) : null}
       </div>
 
       <CommandPalette

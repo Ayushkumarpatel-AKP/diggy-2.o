@@ -405,6 +405,50 @@ export function dispatchKey(el: HTMLElement, type: string, key: string): void {
   dispatch(el, type);
 }
 
+/** An event constructor that accepts a plain init dict (MouseEvent/PointerEvent/Event). */
+type PointEventCtor = new (type: string, init?: Record<string, unknown>) => Event;
+
+/**
+ * Dispatch a bubbling mouse/pointer event that carries viewport coordinates.
+ *
+ * Real UIs (menus, hover cards, canvas widgets) read `clientX/clientY` and the
+ * pointer* phase, so a bare `click` is not enough. `PointerEvent` is preferred
+ * where the realm has it; jsdom and older pages fall back to `MouseEvent`, then
+ * `Event` — the event *type* is still delivered either way.
+ */
+export function dispatchPoint(el: HTMLElement, type: string, point: { x: number; y: number }): void {
+  const view = el.ownerDocument?.defaultView as
+    | (Window & Record<string, unknown>)
+    | null;
+  const global = globalThis as Record<string, unknown>;
+  const wantsPointer = type.startsWith('pointer');
+  const Ctor = (wantsPointer ? (view?.['PointerEvent'] ?? global['PointerEvent']) : undefined)
+    ?? view?.['MouseEvent']
+    ?? global['MouseEvent']
+    ?? view?.['Event']
+    ?? global['Event'];
+  if (typeof Ctor !== 'function') {
+    dispatch(el, type);
+    return;
+  }
+  const buttons = type.endsWith('down') ? 1 : type.endsWith('up') ? 0 : 0;
+  try {
+    el.dispatchEvent(
+      new (Ctor as PointEventCtor)(type, {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        clientX: point.x,
+        clientY: point.y,
+        button: 0,
+        buttons,
+      }),
+    );
+  } catch {
+    dispatch(el, type);
+  }
+}
+
 /**
  * Set a field's value the way a real user would, so framework value trackers
  * see it: through the native setter (from the element's own realm) plus `input`

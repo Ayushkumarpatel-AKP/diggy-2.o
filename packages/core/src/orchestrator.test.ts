@@ -163,3 +163,72 @@ describe("runBrain — plan, act, observe", () => {
     expect(model.calls).toHaveLength(0);
   });
 });
+
+describe("runBrain — failure honesty and no-progress stop", () => {
+  const failingTool: AgentTool = {
+    schema: { name: "click", description: "click a thing", parameters: { type: "object" } },
+    run: () => ({ ok: false, error: "no such element" }),
+  };
+
+  it("records a tool that returns {ok:false} as a failed observation", async () => {
+    const model = scriptedModel([toolCall("click", { target: "x" }), say("Sorry, that failed.")]);
+    const result = await runBrain({
+      goal: "click it",
+      model,
+      tools: [failingTool],
+      planner: false,
+      clock: ticking(),
+      wallClockMs: 10_000_000,
+    });
+
+    expect(result.status).toBe("done");
+    expect(result.steps[0]?.observations[0]).toMatchObject({ ok: false, error: "no such element" });
+  });
+
+  it("stops early when the same action keeps failing", async () => {
+    const model = scriptedModel([toolCall("click", { target: "x" })]);
+    const result = await runBrain({
+      goal: "click it",
+      model,
+      tools: [failingTool],
+      planner: false,
+      clock: ticking(),
+      wallClockMs: 10_000_000,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.error ?? "").toMatch(/same failure/i);
+    expect(model.calls).toHaveLength(2);
+  });
+
+  it("treats a truncated empty reply as an error, not an answer", async () => {
+    const model = scriptedModel([{ text: "", toolCalls: [], finishReason: "length" }]);
+    const result = await runBrain({
+      goal: "answer me",
+      model,
+      tools: [],
+      planner: false,
+      clock: ticking(),
+      wallClockMs: 10_000_000,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.error ?? "").toMatch(/cut off/i);
+  });
+
+  it("passes the abort signal through to the model", async () => {
+    const controller = new AbortController();
+    const model = scriptedModel([say("ok")]);
+    await runBrain({
+      goal: "x",
+      model,
+      tools: [],
+      planner: false,
+      signal: controller.signal,
+      clock: ticking(),
+      wallClockMs: 10_000_000,
+    });
+
+    expect(model.calls[0]?.signal).toBe(controller.signal);
+  });
+});

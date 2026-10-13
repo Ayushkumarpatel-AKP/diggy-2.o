@@ -37,8 +37,10 @@ export function totalTokens(messages: ChatMessage[]): number {
 
 /**
  * Hard-cap a tool result. Under the cap it is returned unchanged; over it the
- * head is kept and a `…[truncated N more characters]` marker is appended. The
- * result never exceeds `maxChars` (a reserve is held back for the marker).
+ * result keeps a **head and a tail** around a `…[truncated N more characters]…`
+ * marker. The tail matters: the consequence of an action (`Page now: …`) is
+ * appended at the end, and a head-only cap used to drop it — so a successful
+ * action looked unconcluded. The result never exceeds `maxChars`.
  */
 export function capToolResult(text: unknown, maxChars: number = CONTEXT.maxToolResultChars): string {
   const value = typeof text === "string" ? text : text === null || text === undefined ? "" : String(text);
@@ -48,11 +50,17 @@ export function capToolResult(text: unknown, maxChars: number = CONTEXT.maxToolR
       : CONTEXT.maxToolResultChars;
   if (cap === 0) return "";
   if (value.length <= cap) return value;
-  const headLength = Math.max(0, cap - CONTEXT.truncationMarkerReserve);
+
+  const budget = Math.max(0, cap - CONTEXT.truncationMarkerReserve);
+  const tailLength = Math.min(CONTEXT.toolResultTailChars, Math.floor(budget / 2));
+  const headLength = Math.max(0, budget - tailLength);
   const head = value.slice(0, headLength);
-  const marker = `\n…[truncated ${value.length - head.length} more characters]`;
-  const capped = head + marker;
-  return capped.length <= cap ? capped : capped.slice(0, cap);
+  const tail = tailLength > 0 ? value.slice(value.length - tailLength) : "";
+  const marker = `\n…[truncated ${value.length - headLength - tailLength} more characters]…\n`;
+  const capped = head + marker + tail;
+  if (capped.length <= cap) return capped;
+  // The marker overflowed its reserve — keep the head plus as much marker as fits.
+  return (head + marker).slice(0, cap);
 }
 
 /** Apply {@link capToolResult} to every `tool` message, leaving others intact. */

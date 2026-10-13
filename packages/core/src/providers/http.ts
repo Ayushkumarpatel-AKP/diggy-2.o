@@ -195,7 +195,7 @@ export class OpenAICompatibleProvider implements Provider {
   async chat(req: ChatRequest): Promise<ChatResult> {
     let response: Response;
     try {
-      response = await this.post("/chat/completions", this.buildBody(req, false));
+      response = await this.post("/chat/completions", this.buildBody(req, false), req.signal);
     } catch (error) {
       throw new ProviderError(`network failure: ${stringify(error)}`, {
         provider: this.id,
@@ -229,7 +229,7 @@ export class OpenAICompatibleProvider implements Provider {
   async *stream(req: ChatRequest): AsyncIterable<ChatChunk> {
     let response: Response;
     try {
-      response = await this.post("/chat/completions", this.buildBody(req, true));
+      response = await this.post("/chat/completions", this.buildBody(req, true), req.signal);
     } catch (error) {
       throw new ProviderError(`network failure: ${stringify(error)}`, {
         provider: this.id,

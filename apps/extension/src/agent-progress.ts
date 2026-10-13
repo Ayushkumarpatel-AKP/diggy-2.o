@@ -93,6 +93,28 @@ export function progressForToolCall(call: ToolCall): string {
       return "Adding that to your calendar…";
     case "notify":
       return "Noting that…";
+    case "listTabs":
+      return "Checking your open tabs…";
+    case "useTab": {
+      const name =
+        clip(args["describe"]) ||
+        (typeof args["tabId"] === "number" ? `tab ${args["tabId"]}` : "");
+      return name ? `Switching to ${name}…` : "Choosing the right tab…";
+    }
+    case "send":
+      return "Sending it…";
+    case "openUrl": {
+      const host = hostOf(args["url"]);
+      return host ? `Opening ${host}…` : "Opening that page…";
+    }
+    case "findVideo":
+      return "Looking up that video…";
+    case "openVideo":
+      return "Opening the video…";
+    case "readProfile":
+      return "Checking your saved details…";
+    case "vaultLookup":
+      return "Getting that from your vault…";
     default:
       return "Working on it…";
   }

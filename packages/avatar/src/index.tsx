@@ -107,6 +107,8 @@ export interface AvatarProps {
   onModeChange?: (mode: AvatarRenderMode, reason: string | null) => void;
   /** Extra content rendered inside the avatar box (host overlays). */
   children?: ReactNode;
+  /** When true, show a compact icon instead of the full VRM model and status. */
+  compact?: boolean;
 }
 
 /** A frame hook that lives inside the canvas so it can drive the controller. */
@@ -226,6 +228,7 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
     onCapability,
     onModeChange,
     children,
+    compact,
   },
   ref,
 ): ReactElement | null {
@@ -318,6 +321,33 @@ export const Avatar = forwardRef<AvatarHandle, AvatarProps>(function Avatar(
   );
 
   if (!snapshot.visible) return null;
+
+  if (compact) {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          pointerEvents: "auto",
+          ...verticalEdge(corner, CORNER_OFFSET),
+          ...horizontalEdge(corner, CORNER_OFFSET),
+          width: 40,
+          height: 40,
+          background: "rgba(17, 17, 24, 0.94)",
+          borderRadius: 50,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.28)",
+        }}
+        aria-hidden
+        data-diggy-avatar-root=""
+        onClick={() => window.dispatchEvent(new Event("diggy:toggle"))}
+      >
+        <span style={{ color: "#e0a63a", fontSize: 24 }}>🤖</span>
+      </div>
+    );
+  }
 
   const boxHeight = Math.round(size * 1.5);
 

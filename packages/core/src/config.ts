@@ -32,6 +32,18 @@ export const BRAIN = Object.freeze({
   defaultMaxTokens: 2048,
   /** Wall-clock ceiling for one run (ms). */
   wallClockMs: 5 * 60 * 1000,
+  /**
+   * How many times the *same* failing tool call may repeat before the run stops.
+   * Without this a model can re-issue a failing action until the step budget runs
+   * out, doing nothing.
+   */
+  repeatFailureLimit: 2,
+  /**
+   * How many *consecutive* failing tool calls (even with different arguments)
+   * end the run. The same-action guard above misses a model that flails with a
+   * different guess every step — this catches that loop too.
+   */
+  consecutiveFailureLimit: 3,
 });
 
 /** Provider failover + reliability. */
@@ -76,6 +88,12 @@ export const CONTEXT = Object.freeze({
   maxToolResultChars: 4_000,
   /** Character reserve held back for the truncation marker. */
   truncationMarkerReserve: 48,
+  /**
+   * How much of a truncated tool result's *tail* to keep. The consequence of an
+   * action (`Page now: …`) is appended at the end, so a head-only cap made a
+   * successful action look unconcluded.
+   */
+  toolResultTailChars: 900,
   /** Rough characters-per-token ratio used for estimation. */
   charsPerToken: 4,
 });

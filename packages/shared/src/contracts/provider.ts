@@ -32,6 +32,8 @@ export interface ChatRequest {
   temperature?: number;
   maxTokens?: number;
   stream?: boolean;
+  /** Abort a completion (Stop). Providers that cannot honour it ignore it. */
+  signal?: AbortSignal;
 }
 
 export interface ChatChunk {
